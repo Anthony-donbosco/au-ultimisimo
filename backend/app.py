@@ -3,6 +3,7 @@ from flask_cors import CORS
 import logging
 import os
 from datetime import datetime
+import socket
 
 # Importar configuraciones
 from config import config
@@ -21,6 +22,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def get_local_ip():
+    """Obtener la IP local de la red"""
+    try:
+        # Crear socket temporal para obtener IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception:
+        return "127.0.0.1"
+
 def create_app(config_name=None):
     """Factory function para crear la aplicación Flask"""
     
@@ -35,23 +48,68 @@ def create_app(config_name=None):
     app.config.from_object(config[config_name])
     logger.info(f"Aplicación iniciada con configuración: {config_name}")
     
-    # Configurar CORS
-    CORS(app, 
-         origins=app.config.get('CORS_ORIGINS', ['http://localhost:3000']),
-         allow_headers=['Content-Type', 'Authorization'],
-         methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-         supports_credentials=True)
+    # CAMBIO: Configurar CORS más permisivo para Expo Go
+    local_ip = get_local_ip()
+    
+    # Orígenes permitidos para desarrollo con Expo Go
+    expo_origins = [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000', 
+        f'http://{local_ip}:19006',  # Puerto por defecto de Expo
+        f'http://{local_ip}:8081',   # Puerto alternativo de Metro
+        f'http://{local_ip}:3000',   # Puerto alternativo
+        'http://localhost:19006',
+        'http://localhost:8081',
+        'http://192.168.*.*:*',      # Redes locales comunes
+        'http://10.0.*.*:*',         # Redes locales Android emulator
+        'http://172.16.*.*:*',       # Redes Docker
+    ]
+    
+    # Agregar orígenes de configuración
+    configured_origins = app.config.get('CORS_ORIGINS', [])
+    all_origins = list(set(expo_origins + configured_origins))
+    
+    # Configuración CORS para desarrollo
+    if app.config.get('DEBUG', False):
+        logger.info("🔧 Modo desarrollo: CORS permisivo activado")
+        cors_config = {
+            'origins': ['*'],  # Permitir todos los orígenes en desarrollo
+            'allow_headers': [
+                'Content-Type', 
+                'Authorization', 
+                'Accept',
+                'Origin',
+                'X-Requested-With',
+                'Access-Control-Request-Method',
+                'Access-Control-Request-Headers'
+            ],
+            'methods': ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+            'supports_credentials': True,
+            'expose_headers': ['Content-Type', 'Authorization'],
+            'max_age': 3600,
+        }
+    else:
+        # Configuración CORS para producción
+        cors_config = {
+            'origins': all_origins,
+            'allow_headers': ['Content-Type', 'Authorization', 'Accept'],
+            'methods': ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+            'supports_credentials': True,
+        }
+    
+    CORS(app, **cors_config)
+    logger.info(f"CORS configurado para: {cors_config['origins']}")
     
     # Inicializar base de datos
     with app.app_context():
         if not init_db():
-            logger.error("Error inicializando base de datos")
+            logger.error("❌ Error inicializando base de datos")
         else:
-            logger.info("Base de datos inicializada correctamente")
+            logger.info("✅ Base de datos inicializada correctamente")
     
     # Registrar blueprints
     app.register_blueprint(auth_bp)
-    logger.info("Blueprints registrados correctamente")
+    logger.info("✅ Blueprints registrados correctamente")
     
     # Ruta de prueba y salud
     @app.route('/')
@@ -59,10 +117,12 @@ def create_app(config_name=None):
         """Endpoint raíz de la API"""
         return create_response(
             True,
-            "API de Autenticación funcionando correctamente",
+            "🚀 API de Aureum funcionando correctamente",
             {
                 'version': '1.0.0',
                 'timestamp': datetime.utcnow().isoformat(),
+                'local_ip': local_ip,
+                'expo_ready': True,
                 'endpoints': {
                     'auth': {
                         'register': '/api/auth/register',
@@ -89,14 +149,17 @@ def create_app(config_name=None):
                 'status': 'healthy' if db_status else 'unhealthy',
                 'timestamp': datetime.utcnow().isoformat(),
                 'database': 'connected' if db_status else 'disconnected',
-                'version': '1.0.0'
+                'version': '1.0.0',
+                'local_ip': local_ip,
+                'expo_ready': db_status,
+                'cors_origins': len(all_origins)
             }
             
             status_code = 200 if db_status else 503
             
             return create_response(
                 db_status,
-                "Servicio saludable" if db_status else "Problemas de conectividad",
+                "✅ Servicio saludable para Expo Go" if db_status else "❌ Problemas de conectividad",
                 health_data,
                 status_code
             )
@@ -115,10 +178,12 @@ def create_app(config_name=None):
         """Información de la API"""
         return create_response(
             True,
-            "API de Autenticación v1.0.0",
+            "📱 API de Aureum v1.0.0 - Compatible con Expo Go",
             {
                 'version': '1.0.0',
                 'description': 'API para registro y autenticación de usuarios',
+                'expo_compatible': True,
+                'local_ip': local_ip,
                 'endpoints': [
                     'POST /api/auth/register - Registrar usuario',
                     'POST /api/auth/login - Iniciar sesión',
@@ -131,6 +196,23 @@ def create_app(config_name=None):
                 ],
                 'authentication': 'JWT Bearer Token',
                 'content_type': 'application/json'
+            }
+        )
+    
+    # NUEVO: Endpoint para obtener IP del servidor (útil para Expo Go)
+    @app.route('/api/server-info')
+    def server_info():
+        """Información del servidor para configuración dinámica"""
+        return create_response(
+            True,
+            "Información del servidor",
+            {
+                'local_ip': local_ip,
+                'port': os.getenv('FLASK_PORT', 5000),
+                'base_url': f"http://{local_ip}:{os.getenv('FLASK_PORT', 5000)}",
+                'timestamp': datetime.utcnow().isoformat(),
+                'cors_enabled': True,
+                'expo_ready': True
             }
         )
     
@@ -194,29 +276,38 @@ def create_app(config_name=None):
     def log_request_info():
         """Log información de cada request"""
         if not request.path.startswith('/static'):
-            logger.info(f"{request.method} {request.path} - {request.remote_addr}")
+            logger.info(f"📥 {request.method} {request.path} - {request.remote_addr}")
     
     @app.after_request
     def log_response_info(response):
         """Log información de cada response"""
         if not request.path.startswith('/static'):
-            logger.info(f"{request.method} {request.path} - {response.status_code}")
+            status_emoji = "✅" if response.status_code < 400 else "❌"
+            logger.info(f"📤 {status_emoji} {request.method} {request.path} - {response.status_code}")
         return response
     
-    # Middleware para CORS preflight
+    # MEJORADO: Middleware para CORS preflight más robusto
     @app.before_request
     def handle_preflight():
-        """Manejar requests preflight de CORS"""
+        """Manejar requests preflight de CORS para Expo Go"""
         if request.method == "OPTIONS":
-            response = jsonify({})
+            response = jsonify({
+                'message': 'CORS preflight OK',
+                'expo_compatible': True
+            })
+            
+            # Headers más completos para Expo Go
             response.headers.add('Access-Control-Allow-Origin', '*')
-            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-            response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept,Origin,X-Requested-With')
+            response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            response.headers.add('Access-Control-Max-Age', '3600')
+            
             return response
     
     # Configuración adicional en modo desarrollo
     if app.config.get('DEBUG'):
-        logger.info("Modo desarrollo activado")
+        logger.info("🔧 Modo desarrollo activado - Funcionalidades extra habilitadas")
         
         @app.route('/debug/config')
         def debug_config():
@@ -226,16 +317,33 @@ def create_app(config_name=None):
             
             safe_config = {
                 'DEBUG': app.config.get('DEBUG'),
-                'CORS_ORIGINS': app.config.get('CORS_ORIGINS'),
+                'CORS_ORIGINS': all_origins[:5],  # Solo mostrar algunos
                 'DB_HOST': app.config.get('DB_CONFIG', {}).get('host', 'No configurado'),
                 'DB_NAME': app.config.get('DB_CONFIG', {}).get('database', 'No configurado'),
-                'JWT_ALGORITHM': app.config.get('JWT_ALGORITHM', 'No configurado')
+                'JWT_ALGORITHM': app.config.get('JWT_ALGORITHM', 'No configurado'),
+                'LOCAL_IP': local_ip,
+                'EXPO_READY': True
             }
             
             return create_response(
                 True,
                 "Configuración de desarrollo",
                 safe_config
+            )
+        
+        @app.route('/debug/expo-test')
+        def expo_test():
+            """Endpoint de prueba específico para Expo Go"""
+            return create_response(
+                True,
+                "🎯 Conexión exitosa desde Expo Go!",
+                {
+                    'your_ip': request.remote_addr,
+                    'server_ip': local_ip,
+                    'user_agent': request.headers.get('User-Agent', 'Unknown'),
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'cors_working': True
+                }
             )
     
     return app
@@ -244,29 +352,34 @@ def create_app(config_name=None):
 app = create_app()
 
 if __name__ == '__main__':
-    """Ejecutar servidor de desarrollo"""
+    """Ejecutar servidor de desarrollo optimizado para Expo Go"""
     
     # Verificar configuración crítica
     if not os.getenv('SECRET_KEY') or not os.getenv('DB_PASSWORD'):
         logger.warning("⚠️  Variables de entorno críticas no configuradas!")
         logger.warning("Asegúrate de configurar SECRET_KEY y DB_PASSWORD en el archivo .env")
     
-    # Configuración del servidor
-    host = os.getenv('FLASK_HOST', '127.0.0.1')
+    # Obtener configuración del servidor
+    host = os.getenv('FLASK_HOST', '0.0.0.0')  # IMPORTANTE: 0.0.0.0 para Expo Go
     port = int(os.getenv('FLASK_PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    local_ip = get_local_ip()
     
-    logger.info("="*50)
-    logger.info("🚀 INICIANDO SERVIDOR DE DESARROLLO")
-    logger.info("="*50)
-    logger.info(f"📍 URL: http://{host}:{port}")
+    logger.info("="*60)
+    logger.info("🚀 INICIANDO SERVIDOR AUREUM - EXPO GO MODE")
+    logger.info("="*60)
+    logger.info(f"📍 Host: {host}:{port}")
+    logger.info(f"📱 IP Local: {local_ip}:{port}")
     logger.info(f"🔧 Debug: {debug}")
-    logger.info(f"📱 Frontend permitido: {os.getenv('FRONTEND_URL', 'http://localhost:3000')}")
-    logger.info("="*50)
+    logger.info(f"🌐 CORS: Habilitado para Expo Go")
+    logger.info(f"🔗 URL para Expo: http://{local_ip}:{port}")
+    logger.info(f"🎯 Test URL: http://{local_ip}:{port}/debug/expo-test")
+    logger.info("="*60)
     logger.info("\n📋 ENDPOINTS DISPONIBLES:")
     logger.info("   GET  /              - Info general")
     logger.info("   GET  /health        - Estado del servicio")
     logger.info("   GET  /api           - Info de la API")
+    logger.info("   GET  /api/server-info - Info del servidor")
     logger.info("   POST /api/auth/register      - Registrar usuario")
     logger.info("   POST /api/auth/login         - Iniciar sesión")
     logger.info("   GET  /api/auth/me            - Perfil usuario (token)")
@@ -275,7 +388,16 @@ if __name__ == '__main__':
     logger.info("   POST /api/auth/validate-token - Validar token")
     logger.info("   POST /api/auth/check-username - Verificar username")
     logger.info("   POST /api/auth/check-email   - Verificar email")
-    logger.info("="*50)
+    if debug:
+        logger.info("   GET  /debug/config           - Ver configuración")
+        logger.info("   GET  /debug/expo-test        - Test de Expo Go")
+    logger.info("="*60)
+    logger.info("\n💡 INSTRUCCIONES PARA EXPO GO:")
+    logger.info(f"1. En tu archivo frontend/src/config/api.ts:")
+    logger.info(f"   Cambia la IP por: http://{local_ip}:{port}")
+    logger.info(f"2. Tu dispositivo debe estar en la misma red WiFi")
+    logger.info(f"3. Prueba la conexión: http://{local_ip}:{port}/debug/expo-test")
+    logger.info("="*60)
     
     # Iniciar servidor
     try:
@@ -283,9 +405,11 @@ if __name__ == '__main__':
             host=host,
             port=port,
             debug=debug,
-            threaded=True
+            threaded=True,
+            use_reloader=debug  # Solo reload en debug
         )
     except KeyboardInterrupt:
         logger.info("\n👋 Servidor detenido por el usuario")
     except Exception as e:
         logger.error(f"❌ Error iniciando servidor: {e}")
+        logger.error("💡 Verifica que el puerto no esté en uso y que MySQL esté corriendo")

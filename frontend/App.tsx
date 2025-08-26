@@ -11,10 +11,12 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { useDarkMode } from './src/hooks/useDarkMode';
 import { globalStyles } from './src/styles/globalStyles';
 import { checkNetworkConnection } from './src/utils/networkUtils';
+import { AuthProvider } from './src/context/AuthContext'; // ← CORREGIR: contexts (con 's')
 
 const queryClient = new QueryClient();
 
-export default function App() {
+// Componente principal de la aplicación
+function AppContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<number | null>(null);
@@ -72,5 +74,14 @@ export default function App() {
         </QueryClientProvider>
       </ThemeProvider>
     </SafeAreaProvider>
+  );
+}
+
+// Componente App principal que envuelve todo con el AuthProvider
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

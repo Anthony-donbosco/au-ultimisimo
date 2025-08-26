@@ -1,260 +1,476 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   Alert,
+  ActivityIndicator,
   TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { RegistroProps, DatosRegistro } from '../../types';
+import { AuthInput } from './AuthInput';
+import { AuthButton } from './AuthButton';
+import authService, { RegisterData } from '../../services/authService';
 
-const Registro: React.FC<RegistroProps> = ({ onSubmit, loading, isDarkMode }) => {
+interface RegistroProps {
+  onRegisterSuccess: (user: any) => void;
+  isDarkMode?: boolean;
+  onSwitchToLogin?: () => void;
+}
+
+interface FormErrors {
+  username?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+const Registro: React.FC<RegistroProps> = ({ 
+  onRegisterSuccess, 
+  isDarkMode = false,
+  onSwitchToLogin 
+}) => {
   const { t } = useTranslation();
-  const [nombre, setNombre] = useState('');
-  const [email, setEmail] = useState('');
-  const [contrasena, setContrasena] = useState('');
-  const [confirmarContrasena, setConfirmarContrasena] = useState('');
-  const [mostrarContrasena, setMostrarContrasena] = useState(false);
-  const [mostrarConfirmarContrasena, setMostrarConfirmarContrasena] = useState(false);
+  
+  // Estados del formulario
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    firstName: '',
+    lastName: '',
+  });
+  
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [checkingEmail, setCheckingEmail] = useState(false);
 
-  const manejarEnvio = () => {
-    if (!nombre.trim() || !email.trim() || !contrasena.trim() || !confirmarContrasena.trim()) {
-      Alert.alert(t('common.error'), t('auth.validation.fillAllFields'));
+  // Limpiar errores cuando el usuario empiece a escribir
+  const clearError = (field: keyof FormErrors) => {
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  // Actualizar campo del formulario
+  const updateField = (field: keyof typeof formData, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    clearError(field as keyof FormErrors);
+  };
+
+  // Verificar disponibilidad de username (con debounce)
+  useEffect(() => {
+    if (formData.username.length >= 3) {
+      const timeoutId = setTimeout(async () => {
+        setCheckingUsername(true);
+        try {
+          const result = await authService.checkUsernameAvailability(formData.username);
+          if (!result.available) {
+            setErrors(prev => ({ ...prev, username: 'Este nombre de usuario no está disponible' }));
+          }
+        } catch (error) {
+          console.warn('Error verificando username:', error);
+        } finally {
+          setCheckingUsername(false);
+        }
+      }, 800);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [formData.username]);
+
+  // Verificar disponibilidad de email (con debounce)
+  useEffect(() => {
+    if (formData.email.includes('@') && formData.email.length >= 5) {
+      const timeoutId = setTimeout(async () => {
+        setCheckingEmail(true);
+        try {
+          const result = await authService.checkEmailAvailability(formData.email);
+          if (!result.available) {
+            setErrors(prev => ({ ...prev, email: 'Este email ya está registrado' }));
+          }
+        } catch (error) {
+          console.warn('Error verificando email:', error);
+        } finally {
+          setCheckingEmail(false);
+        }
+      }, 800);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [formData.email]);
+
+  // Validaciones del frontend
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
+
+    // Validar username
+    if (!formData.username.trim()) {
+      newErrors.username = 'Nombre de usuario requerido';
+    } else if (formData.username.length < 3) {
+      newErrors.username = 'Mínimo 3 caracteres';
+    } else if (formData.username.length > 50) {
+      newErrors.username = 'Máximo 50 caracteres';
+    } else if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
+      newErrors.username = 'Solo letras, números y guiones bajos';
+    }
+
+    // Validar email
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email requerido';
+    } else if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(formData.email)) {
+      newErrors.email = 'Formato de email inválido';
+    } else if (formData.email.length > 100) {
+      newErrors.email = 'Email demasiado largo';
+    }
+
+    // Validar contraseña
+    if (!formData.password) {
+      newErrors.password = 'Contraseña requerida';
+    } else if (formData.password.length < 8) {
+      newErrors.password = 'Mínimo 8 caracteres';
+    } else if (formData.password.length > 128) {
+      newErrors.password = 'Máximo 128 caracteres';
+    } else if (!/[a-zA-Z]/.test(formData.password)) {
+      newErrors.password = 'Debe contener al menos una letra';
+    } else if (!/[0-9]/.test(formData.password)) {
+      newErrors.password = 'Debe contener al menos un número';
+    }
+
+    // Validar confirmación de contraseña
+    if (!formData.confirmPassword) {
+      newErrors.confirmPassword = 'Confirma tu contraseña';
+    } else if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = 'Las contraseñas no coinciden';
+    }
+
+    // Validar nombres (opcionales)
+    if (formData.firstName && formData.firstName.length > 50) {
+      newErrors.firstName = 'Máximo 50 caracteres';
+    }
+    if (formData.lastName && formData.lastName.length > 50) {
+      newErrors.lastName = 'Máximo 50 caracteres';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Manejar envío del formulario
+  const handleSubmit = async () => {
+    // Validar formulario
+    if (!validateForm()) {
       return;
     }
 
-    if (!email.includes('@')) {
-      Alert.alert(t('common.error'), t('auth.validation.invalidEmail'));
+    // Verificar que no haya verificaciones pendientes
+    if (checkingUsername || checkingEmail) {
+      Alert.alert(
+        'Verificando disponibilidad',
+        'Por favor espera mientras verificamos la disponibilidad del usuario y email.'
+      );
       return;
     }
 
-    if (contrasena !== confirmarContrasena) {
-      Alert.alert(t('common.error'), t('auth.validation.passwordMismatch'));
-      return;
+    setLoading(true);
+
+    try {
+      // Preparar datos para el backend
+      const registerData: RegisterData = {
+        username: formData.username.trim(),
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+        ...(formData.firstName.trim() && { first_name: formData.firstName.trim() }),
+        ...(formData.lastName.trim() && { last_name: formData.lastName.trim() }),
+      };
+
+      console.log('📝 Intentando registro con:', { 
+        username: registerData.username, 
+        email: registerData.email 
+      });
+
+      const result = await authService.register(registerData);
+
+      if (result.success && result.user) {
+        console.log('✅ Registro exitoso');
+        Alert.alert(
+          t('common.success') || 'Éxito',
+          result.message || 'Cuenta creada correctamente',
+          [
+            {
+              text: t('common.continue') || 'Continuar',
+              onPress: () => onRegisterSuccess(result.user)
+            }
+          ]
+        );
+      } else {
+        console.log('❌ Registro fallido:', result.message);
+        Alert.alert(
+          t('common.error') || 'Error',
+          result.message || 'Error al crear la cuenta'
+        );
+      }
+    } catch (error: any) {
+      console.error('💥 Error en registro:', error);
+      Alert.alert(
+        t('common.error') || 'Error',
+        error.message || 'Error de conexión. Verifica que el servidor esté funcionando.'
+      );
+    } finally {
+      setLoading(false);
     }
-
-    if (contrasena.length < 6) {
-      Alert.alert(t('common.error'), t('auth.validation.passwordMinLength'));
-      return;
-    }
-
-    const datosRegistro: DatosRegistro = {
-      nombre: nombre.trim(),
-      email: email.trim(),
-      contrasena,
-      confirmarContrasena,
-      tipoUsuario: 'usuario',
-    };
-
-    onSubmit(datosRegistro);
   };
 
   const themeStyles = isDarkMode ? darkStyles : lightStyles;
+  const isFormValid = formData.username.length >= 3 && 
+                     formData.email.includes('@') && 
+                     formData.password.length >= 8 && 
+                     formData.password === formData.confirmPassword;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.inputContainer}>
-        <Text style={[styles.label, themeStyles.label]}>{t('auth.register.fullName')}</Text>
-        <TextInput
-          style={[styles.input, themeStyles.input]}
-          placeholder={t('auth.register.fullNamePlaceholder')}
-          placeholderTextColor={isDarkMode ? '#94a3b8' : '#64748b'}
-          value={nombre}
-          onChangeText={setNombre}
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <View style={styles.form}>
+        {/* Campo Username */}
+        <View style={styles.inputWrapper}>
+          <AuthInput
+            label="Nombre de Usuario *"
+            value={formData.username}
+            onChangeText={(text) => updateField('username', text)}
+            placeholder="Ej: juan_perez123"
+            icon="person"
+            autoCapitalize="none"
+            autoCorrect={false}
+            isDarkMode={isDarkMode}
+            error={errors.username}
+            editable={!loading}
+          />
+          {checkingUsername && (
+            <View style={styles.checkingIndicator}>
+              <ActivityIndicator size="small" color="#f59e0b" />
+              <Text style={[styles.checkingText, themeStyles.secondaryText]}>
+                Verificando disponibilidad...
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Campo Email */}
+        <View style={styles.inputWrapper}>
+          <AuthInput
+            label="Email *"
+            value={formData.email}
+            onChangeText={(text) => updateField('email', text)}
+            placeholder="ejemplo@correo.com"
+            icon="mail"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            isDarkMode={isDarkMode}
+            error={errors.email}
+            editable={!loading}
+          />
+          {checkingEmail && (
+            <View style={styles.checkingIndicator}>
+              <ActivityIndicator size="small" color="#f59e0b" />
+              <Text style={[styles.checkingText, themeStyles.secondaryText]}>
+                Verificando disponibilidad...
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Campo Nombre */}
+        <AuthInput
+          label="Nombre (Opcional)"
+          value={formData.firstName}
+          onChangeText={(text) => updateField('firstName', text)}
+          placeholder="Tu nombre"
+          icon="person-outline"
           autoCapitalize="words"
-          autoCorrect={false}
+          isDarkMode={isDarkMode}
+          error={errors.firstName}
           editable={!loading}
         />
-      </View>
 
-      <View style={styles.inputContainer}>
-        <Text style={[styles.label, themeStyles.label]}>{t('auth.register.email')}</Text>
-        <TextInput
-          style={[styles.input, themeStyles.input]}
-          placeholder={t('auth.register.emailPlaceholder')}
-          placeholderTextColor={isDarkMode ? '#94a3b8' : '#64748b'}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
+        {/* Campo Apellido */}
+        <AuthInput
+          label="Apellido (Opcional)"
+          value={formData.lastName}
+          onChangeText={(text) => updateField('lastName', text)}
+          placeholder="Tu apellido"
+          icon="person-outline"
+          autoCapitalize="words"
+          isDarkMode={isDarkMode}
+          error={errors.lastName}
           editable={!loading}
         />
-      </View>
 
-      <View style={styles.inputContainer}>
-        <Text style={[styles.label, themeStyles.label]}>{t('auth.register.password')}</Text>
-        <View style={[styles.passwordContainer, themeStyles.input]}>
-          <TextInput
-            style={styles.passwordInput}
-            placeholder={t('auth.register.passwordPlaceholder')}
-            placeholderTextColor={isDarkMode ? '#94a3b8' : '#64748b'}
-            value={contrasena}
-            onChangeText={setContrasena}
-            secureTextEntry={!mostrarContrasena}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!loading}
-          />
-          <TouchableOpacity
-            style={styles.toggleButton}
-            onPress={() => setMostrarContrasena(!mostrarContrasena)}
-            disabled={loading}
-          >
-            <Text style={[styles.toggleText, themeStyles.toggleText]}>
-              {mostrarContrasena ? t('common.hide', 'Ocultar') : t('common.show', 'Mostrar')}
-            </Text>
-          </TouchableOpacity>
+        {/* Campo Contraseña */}
+        <AuthInput
+          label="Contraseña *"
+          value={formData.password}
+          onChangeText={(text) => updateField('password', text)}
+          placeholder="Mínimo 8 caracteres"
+          icon="lock-closed"
+          isPassword={true}
+          isDarkMode={isDarkMode}
+          error={errors.password}
+          editable={!loading}
+        />
+
+        {/* Campo Confirmar Contraseña */}
+        <AuthInput
+          label="Confirmar Contraseña *"
+          value={formData.confirmPassword}
+          onChangeText={(text) => updateField('confirmPassword', text)}
+          placeholder="Repite tu contraseña"
+          icon="lock-closed"
+          isPassword={true}
+          isDarkMode={isDarkMode}
+          error={errors.confirmPassword}
+          editable={!loading}
+        />
+
+        {/* Información de requisitos */}
+        <View style={styles.requirementsContainer}>
+          <Text style={[styles.requirementsTitle, themeStyles.text]}>
+            Requisitos de la contraseña:
+          </Text>
+          <Text style={[styles.requirementText, themeStyles.secondaryText]}>
+            • Mínimo 8 caracteres
+          </Text>
+          <Text style={[styles.requirementText, themeStyles.secondaryText]}>
+            • Al menos una letra
+          </Text>
+          <Text style={[styles.requirementText, themeStyles.secondaryText]}>
+            • Al menos un número
+          </Text>
         </View>
-      </View>
 
-      <View style={styles.inputContainer}>
-        <Text style={[styles.label, themeStyles.label]}>{t('auth.register.confirmPassword')}</Text>
-        <View style={[styles.passwordContainer, themeStyles.input]}>
-          <TextInput
-            style={styles.passwordInput}
-            placeholder={t('auth.register.confirmPasswordPlaceholder')}
-            placeholderTextColor={isDarkMode ? '#94a3b8' : '#64748b'}
-            value={confirmarContrasena}
-            onChangeText={setConfirmarContrasena}
-            secureTextEntry={!mostrarConfirmarContrasena}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!loading}
-          />
-          <TouchableOpacity
-            style={styles.toggleButton}
-            onPress={() => setMostrarConfirmarContrasena(!mostrarConfirmarContrasena)}
-            disabled={loading}
-          >
-            <Text style={[styles.toggleText, themeStyles.toggleText]}>
-              {mostrarConfirmarContrasena ? t('common.hide', 'Ocultar') : t('common.show', 'Mostrar')}
+        {/* Botón de Registro */}
+        <AuthButton
+          title={loading ? 'Creando cuenta...' : 'Crear Cuenta'}
+          onPress={handleSubmit}
+          loading={loading}
+          variant="primary"
+          size="large"
+          isDarkMode={isDarkMode}
+          disabled={loading || !isFormValid || checkingUsername || checkingEmail}
+        />
+
+        {/* Enlace para cambiar a login */}
+        {onSwitchToLogin && (
+          <View style={styles.switchContainer}>
+            <Text style={[styles.switchText, themeStyles.text]}>
+              ¿Ya tienes cuenta?{' '}
             </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+            <TouchableOpacity onPress={onSwitchToLogin} disabled={loading}>
+              <Text style={[styles.switchLink, themeStyles.linkText]}>
+                Inicia sesión aquí
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-      <View style={styles.passwordRequirements}>
-        <Text style={[styles.requirementText, themeStyles.secondaryText]}>
-          • {t('validation.minLength', { min: 6 })}
-        </Text>
-        <Text style={[styles.requirementText, themeStyles.secondaryText]}>
-          • {t('validation.passwordMismatch')} ({t('common.confirmation', 'confirmación')})
-        </Text>
+        {/* Indicador de carga adicional */}
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#f59e0b" />
+            <Text style={[styles.loadingText, themeStyles.secondaryText]}>
+              Creando tu cuenta...
+            </Text>
+          </View>
+        )}
       </View>
-
-      <TouchableOpacity
-        style={[
-          styles.submitButton,
-          loading && styles.submitButtonDisabled,
-        ]}
-        onPress={manejarEnvio}
-        disabled={loading}
-      >
-        <Text style={styles.submitButtonText}>
-          {loading ? t('auth.register.creatingAccount') : t('auth.register.createAccountButton')}
-        </Text>
-      </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    flex: 1,
   },
-  inputContainer: {
-    marginBottom: 16,
+  form: {
+    gap: 16,
+    paddingBottom: 40,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
+  inputWrapper: {
+    gap: 8,
   },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  passwordContainer: {
+  checkingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
+    gap: 8,
+    marginTop: 4,
   },
-  passwordInput: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: 'inherit',
+  checkingText: {
+    fontSize: 12,
+    fontStyle: 'italic',
   },
-  toggleButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  requirementsContainer: {
+    marginTop: 4,
+    marginBottom: 8,
   },
-  toggleText: {
+  requirementsTitle: {
     fontSize: 14,
-    fontWeight: '600',
-  },
-  passwordRequirements: {
-    marginBottom: 24,
+    fontWeight: '500',
+    marginBottom: 8,
   },
   requirementText: {
     fontSize: 12,
     marginBottom: 4,
   },
-  submitButton: {
-    backgroundColor: '#f59e0b',
-    paddingVertical: 14,
-    borderRadius: 12,
+  switchContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 20,
   },
-  submitButtonDisabled: {
-    opacity: 0.6,
+  switchText: {
+    fontSize: 14,
   },
-  submitButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
+  switchLink: {
+    fontSize: 14,
     fontWeight: '600',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 14,
   },
 });
 
 const lightStyles = StyleSheet.create({
-  label: {
+  text: {
     color: '#1e293b',
-  },
-  input: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    color: '#1e293b',
-  },
-  toggleText: {
-    color: '#f59e0b',
   },
   secondaryText: {
     color: '#64748b',
   },
+  linkText: {
+    color: '#f59e0b',
+  },
 });
 
 const darkStyles = StyleSheet.create({
-  label: {
+  text: {
     color: '#f1f5f9',
-  },
-  input: {
-    backgroundColor: '#334155',
-    borderColor: '#475569',
-    color: '#f1f5f9',
-  },
-  toggleText: {
-    color: '#f59e0b',
   },
   secondaryText: {
     color: '#94a3b8',
+  },
+  linkText: {
+    color: '#f59e0b',
   },
 });
 

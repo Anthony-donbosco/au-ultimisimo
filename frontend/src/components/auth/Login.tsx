@@ -2,185 +2,254 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   Alert,
+  ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { LoginProps, CredencialesLogin } from '../../types';
+import { AuthInput } from './AuthInput';
+import { AuthButton } from './AuthButton';
+import authService, { LoginCredentials } from '../../services/authService';
 
-const Login: React.FC<LoginProps> = ({ onSubmit, loading, isDarkMode }) => {
+interface LoginProps {
+  onLoginSuccess: (user: any) => void;
+  isDarkMode?: boolean;
+  onSwitchToRegister?: () => void;
+}
+
+const Login: React.FC<LoginProps> = ({ 
+  onLoginSuccess, 
+  isDarkMode = false, 
+  onSwitchToRegister 
+}) => {
   const { t } = useTranslation();
-  const [email, setEmail] = useState('');
-  const [contrasena, setContrasena] = useState('');
-  const [mostrarContrasena, setMostrarContrasena] = useState(false);
+  const [login, setLogin] = useState(''); // Puede ser email o username
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{login?: string; password?: string}>({});
 
-  const manejarEnvio = () => {
-    if (!email.trim() || !contrasena.trim()) {
-      Alert.alert(t('common.error'), t('auth.validation.fillAllFields'));
+  // Limpiar errores cuando el usuario empiece a escribir
+  const clearError = (field: 'login' | 'password') => {
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  // Validaciones del frontend
+  const validateForm = (): boolean => {
+    const newErrors: {login?: string; password?: string} = {};
+
+    // Validar campo de login (email o username)
+    if (!login.trim()) {
+      newErrors.login = t('auth.validation.loginRequired') || 'Email o usuario requerido';
+    } else if (login.trim().length < 3) {
+      newErrors.login = t('auth.validation.loginTooShort') || 'Mínimo 3 caracteres';
+    }
+
+    // Validar contraseña
+    if (!password) {
+      newErrors.password = t('auth.validation.passwordRequired') || 'Contraseña requerida';
+    } else if (password.length < 6) {
+      newErrors.password = t('auth.validation.passwordMinLength') || 'Mínimo 6 caracteres';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Manejar envío del formulario
+  const handleSubmit = async () => {
+    // Validar formulario
+    if (!validateForm()) {
       return;
     }
 
-    if (!email.includes('@')) {
-      Alert.alert(t('common.error'), t('auth.validation.invalidEmail'));
-      return;
+    setLoading(true);
+
+    try {
+      const credentials: LoginCredentials = {
+        login: login.trim(),
+        password: password,
+      };
+
+      console.log('🔐 Intentando login con:', { login: credentials.login });
+
+      const result = await authService.login(credentials);
+
+      if (result.success && result.user) {
+        console.log('✅ Login exitoso');
+        Alert.alert(
+          t('common.success') || 'Éxito',
+          result.message || t('auth.login.success') || 'Sesión iniciada correctamente',
+          [
+            {
+              text: t('common.continue') || 'Continuar',
+              onPress: () => onLoginSuccess(result.user)
+            }
+          ]
+        );
+      } else {
+        console.log('❌ Login fallido:', result.message);
+        Alert.alert(
+          t('common.error') || 'Error',
+          result.message || t('auth.login.error') || 'Credenciales incorrectas'
+        );
+      }
+    } catch (error: any) {
+      console.error('💥 Error en login:', error);
+      Alert.alert(
+        t('common.error') || 'Error',
+        error.message || t('common.connectionError') || 'Error de conexión. Verifica que el servidor esté funcionando.'
+      );
+    } finally {
+      setLoading(false);
     }
-
-    const credenciales: CredencialesLogin = {
-      email: email.trim(),
-      contrasena,
-    };
-
-    onSubmit(credenciales);
   };
 
   const themeStyles = isDarkMode ? darkStyles : lightStyles;
 
   return (
     <View style={styles.container}>
-      <View style={styles.inputContainer}>
-        <Text style={[styles.label, themeStyles.label]}>{t('auth.login.email')}</Text>
-        <TextInput
-          style={[styles.input, themeStyles.input]}
-          placeholder={t('auth.login.emailPlaceholder')}
-          placeholderTextColor={isDarkMode ? '#94a3b8' : '#64748b'}
-          value={email}
-          onChangeText={setEmail}
+      <View style={styles.form}>
+        {/* Campo de Login (Email o Username) */}
+        <AuthInput
+          label={t('auth.login.emailOrUsername') || 'Email o Usuario'}
+          value={login}
+          onChangeText={(text) => {
+            setLogin(text);
+            clearError('login');
+          }}
+          placeholder={t('auth.login.emailOrUsernamePlaceholder') || 'Ingresa tu email o nombre de usuario'}
+          icon="person"
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
+          isDarkMode={isDarkMode}
+          error={errors.login}
           editable={!loading}
         />
-      </View>
 
-      <View style={styles.inputContainer}>
-        <Text style={[styles.label, themeStyles.label]}>{t('auth.login.password')}</Text>
-        <View style={styles.passwordContainer}>
-          <TextInput
-            style={[styles.passwordInput, themeStyles.input]}
-            placeholder={t('auth.login.passwordPlaceholder')}
-            placeholderTextColor={isDarkMode ? '#94a3b8' : '#64748b'}
-            value={contrasena}
-            onChangeText={setContrasena}
-            secureTextEntry={!mostrarContrasena}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!loading}
-          />
-          <TouchableOpacity
-            style={styles.toggleButton}
-            onPress={() => setMostrarContrasena(!mostrarContrasena)}
-            disabled={loading}
-          >
-            <Text style={[styles.toggleText, themeStyles.toggleText]}>
-              {mostrarContrasena ? t('common.hide', 'Ocultar') : t('common.show', 'Mostrar')}
+        {/* Campo de Contraseña */}
+        <AuthInput
+          label={t('auth.login.password') || 'Contraseña'}
+          value={password}
+          onChangeText={(text) => {
+            setPassword(text);
+            clearError('password');
+          }}
+          placeholder={t('auth.login.passwordPlaceholder') || 'Ingresa tu contraseña'}
+          icon="lock-closed"
+          isPassword={true}
+          isDarkMode={isDarkMode}
+          error={errors.password}
+          editable={!loading}
+        />
+
+        {/* Botón de Olvidé mi contraseña */}
+        <TouchableOpacity
+          style={styles.forgotPasswordContainer}
+          onPress={() => Alert.alert(
+            t('auth.login.forgotPassword') || 'Olvidé mi contraseña',
+            t('auth.login.forgotPasswordMessage') || 'Esta funcionalidad estará disponible pronto.'
+          )}
+          disabled={loading}
+        >
+          <Text style={[styles.forgotPasswordText, themeStyles.linkText]}>
+            {t('auth.login.forgotPassword') || '¿Olvidaste tu contraseña?'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Botón de Iniciar Sesión */}
+        <AuthButton
+          title={loading ? 
+            t('auth.login.signingIn') || 'Iniciando sesión...' : 
+            t('auth.login.signInButton') || 'Iniciar Sesión'
+          }
+          onPress={handleSubmit}
+          loading={loading}
+          variant="primary"
+          size="large"
+          isDarkMode={isDarkMode}
+          disabled={loading || !login.trim() || !password}
+        />
+
+        {/* Enlace para cambiar a registro */}
+        {onSwitchToRegister && (
+          <View style={styles.switchContainer}>
+            <Text style={[styles.switchText, themeStyles.text]}>
+              {t('auth.login.noAccount') || '¿No tienes cuenta?'}{' '}
             </Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity onPress={onSwitchToRegister} disabled={loading}>
+              <Text style={[styles.switchLink, themeStyles.linkText]}>
+                {t('auth.login.signUpLink') || 'Regístrate aquí'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Indicador de carga adicional */}
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#f59e0b" />
+            <Text style={[styles.loadingText, themeStyles.secondaryText]}>
+              {t('auth.login.authenticating') || 'Autenticando...'}
+            </Text>
+          </View>
+        )}
       </View>
-
-      <TouchableOpacity
-        style={styles.forgotPassword}
-        onPress={() => Alert.alert(t('auth.login.forgotPassword'), t('common.functionalityInDevelopment', 'Funcionalidad en desarrollo'))}
-        disabled={loading}
-      >
-        <Text style={[styles.forgotPasswordText, themeStyles.linkText]}>
-          {t('auth.login.forgotPassword')}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[
-          styles.submitButton,
-          loading && styles.submitButtonDisabled,
-        ]}
-        onPress={manejarEnvio}
-        disabled={loading}
-      >
-        <Text style={styles.submitButtonText}>
-          {loading ? t('auth.login.signingIn') : t('auth.login.signInButton')}
-        </Text>
-      </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  passwordContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  passwordInput: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    borderWidth: 0,
+    justifyContent: 'center',
   },
-  toggleButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  form: {
+    gap: 20,
   },
-  toggleText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  forgotPassword: {
+  forgotPasswordContainer: {
     alignSelf: 'flex-end',
-    marginBottom: 24,
+    marginTop: -8,
+    marginBottom: 8,
   },
   forgotPasswordText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
   },
-  submitButton: {
-    backgroundColor: '#f59e0b',
-    paddingVertical: 14,
-    borderRadius: 12,
+  switchContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 20,
   },
-  submitButtonDisabled: {
-    opacity: 0.6,
+  switchText: {
+    fontSize: 14,
   },
-  submitButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
+  switchLink: {
+    fontSize: 14,
     fontWeight: '600',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 14,
   },
 });
 
 const lightStyles = StyleSheet.create({
-  label: {
+  text: {
     color: '#1e293b',
   },
-  input: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    color: '#1e293b',
-  },
-  toggleText: {
-    color: '#f59e0b',
+  secondaryText: {
+    color: '#64748b',
   },
   linkText: {
     color: '#f59e0b',
@@ -188,16 +257,11 @@ const lightStyles = StyleSheet.create({
 });
 
 const darkStyles = StyleSheet.create({
-  label: {
+  text: {
     color: '#f1f5f9',
   },
-  input: {
-    backgroundColor: '#334155',
-    borderColor: '#475569',
-    color: '#f1f5f9',
-  },
-  toggleText: {
-    color: '#f59e0b',
+  secondaryText: {
+    color: '#94a3b8',
   },
   linkText: {
     color: '#f59e0b',

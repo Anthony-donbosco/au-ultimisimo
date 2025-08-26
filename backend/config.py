@@ -31,11 +31,18 @@ class Config:
     )
     JWT_ALGORITHM = 'HS256'
     
-    # Configuración CORS
+    # CAMBIO: Configuración CORS más permisiva para Expo Go
     CORS_ORIGINS = [
         os.getenv('FRONTEND_URL', 'http://localhost:3000'),
-        'http://localhost:3001',  # Por si usas otro puerto
-        'http://127.0.0.1:3000'
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://127.0.0.1:3000',
+        'http://192.168.1.*:*',  # ← NUEVO: Permite IPs de red local
+        'http://10.0.0.*:*',     # ← NUEVO: Para emuladores Android
+        'http://172.16.*:*',     # ← NUEVO: Para Docker/emuladores
+        'http://localhost:19006', # ← NUEVO: Puerto por defecto de Expo
+        'http://localhost:8081',  # ← NUEVO: Puerto alternativo de Metro
+        '*'  # ← NUEVO: Para desarrollo (quitar en producción)
     ]
     
     # Configuración de validación
@@ -47,12 +54,15 @@ class Config:
 class DevelopmentConfig(Config):
     """Configuración para desarrollo"""
     DEBUG = True
+    
+    # NUEVO: Configuración específica para desarrollo con Expo
+    CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL', 'false').lower() == 'true'
 
 class ProductionConfig(Config):
     """Configuración para producción"""
     DEBUG = False
+    CORS_ORIGINS = [os.getenv('FRONTEND_URL', 'https://tu-dominio.com')]
     
-    # En producción, asegurar que estas variables estén definidas
     @classmethod
     def init_app(cls, app):
         Config.init_app(app)
