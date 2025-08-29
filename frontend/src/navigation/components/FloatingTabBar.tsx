@@ -1,4 +1,5 @@
-import React from "react";
+// src/navigation/components/FloatingTabBar.tsx
+import React, { useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -6,6 +7,7 @@ import {
   StyleSheet,
   Platform,
   Dimensions,
+  Animated,
 } from "react-native";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,10 +15,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useTheme } from "../../contexts/ThemeContext";
 import { colors as Palette } from "../../styles/colors";
+import { useTabBarVisibility } from "../useTabBarVisibility"; // ← FIX PATH
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-// Colores con soporte a modo oscuro desde tu ThemeContext + palette actual
 function useColors() {
   const { isDarkMode } = useTheme();
   const base = {
@@ -41,8 +43,6 @@ const ICONS: Record<
   Dashboard: { active: "home", inactive: "home-outline", label: "Inicio" },
   Facturas: { active: "document-text", inactive: "document-text-outline", label: "Facturas" },
   Objetivos: { active: "trophy", inactive: "trophy-outline", label: "Objetivos" },
-
-  // Si más tarde agregas:
   Transacciones: { active: "swap-horizontal", inactive: "swap-horizontal-outline", label: "Movs" },
   Configuracion: { active: "settings", inactive: "settings-outline", label: "Ajustes" },
   Perfil: { active: "person", inactive: "person-outline", label: "Perfil" },
@@ -57,6 +57,26 @@ export default function FloatingTabBar({
 }: BottomTabBarProps) {
   const C = useColors();
   const insets = useSafeAreaInsets();
+
+  // --- Animación de visibilidad ---
+  const { isVisible } = useTabBarVisibility();
+  const translateY = useRef(new Animated.Value(0)).current; // 0 = visible
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(translateY, {
+        toValue: isVisible ? 0 : 100,  // desplazar hacia abajo
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: isVisible ? 1 : 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [isVisible, translateY, opacity]);
 
   const content = (
     <View
@@ -146,19 +166,30 @@ export default function FloatingTabBar({
     </View>
   );
 
-  // iOS con blur sutil tipo “dock”
-  if (Platform.OS === "ios") {
-    return (
-      <View style={styles.absolute}>
+  const body = (
+    <Animated.View
+      style={[
+        styles.absolute,
+        {
+          transform: [{ translateY }],
+          opacity,
+          // evita que se pueda tocar cuando está oculto
+          // (en Android ayuda a que no “robe” toques fuera de la vista)
+          pointerEvents: isVisible ? "auto" : "none",
+        },
+      ]}
+    >
+      {Platform.OS === "ios" ? (
         <BlurView intensity={40} tint="dark" style={{ borderTopLeftRadius: 28, borderTopRightRadius: 28 }}>
           {content}
         </BlurView>
-      </View>
-    );
-  }
+      ) : (
+        <View>{content}</View>
+      )}
+    </Animated.View>
+  );
 
-  // Android: fondo sólido (mejor perf)
-  return <View style={styles.absolute}>{content}</View>;
+  return body;
 }
 
 const styles = StyleSheet.create({
@@ -182,7 +213,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    // sombra (iOS) + elevación (Android)
     shadowOpacity: 0.35,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },

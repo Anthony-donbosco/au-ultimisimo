@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from "react-i18next";
@@ -18,6 +20,7 @@ import { colors } from '../../styles/colors';
 import { authService } from '../../services/auth';
 import { formatCurrency, formatDateLong } from '../../utils/networkUtils';
 import { useNavigation } from "@react-navigation/native";
+import { useTabBarVisibility } from '../../navigation/useTabBarVisibility';
 
 
 interface DashboardData {
@@ -62,6 +65,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthChange, onRoleChange }) => 
   const { t } = useTranslation();
   const { isDarkMode, toggleTheme } = useTheme();
   const { isTablet, wp, hp } = useResponsive();
+  const { setIsVisible } = useTabBarVisibility();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [userData, setUserData] = useState<any>(null);
@@ -80,6 +84,41 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthChange, onRoleChange }) => 
   const navegarAObjetivos = () => {
     navigation.navigate('Objetivos' as never);
   };
+  const navegarATransacciones = () => {
+    navigation.navigate('Transacciones' as never);
+  };
+
+  const lastOffsetY = useRef(0);
+  const lastAction = useRef<"show" | "hide">("show");
+
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+
+    // Mostrar siempre si estás casi arriba
+    if (y < 16 && lastAction.current !== "show") {
+      setIsVisible(true);
+      lastAction.current = "show";
+      lastOffsetY.current = y;
+      return;
+    }
+
+    const delta = y - lastOffsetY.current;
+    const THRESHOLD = 12; // umbral anti-parpadeo
+
+    if (Math.abs(delta) < THRESHOLD) return;
+
+    if (delta > 0 && lastAction.current !== "hide") {
+      // Scrolling down → ocultar
+      setIsVisible(false);
+      lastAction.current = "hide";
+    } else if (delta < 0 && lastAction.current !== "show") {
+      // Scrolling up → mostrar
+      setIsVisible(true);
+      lastAction.current = "show";
+    }
+
+    lastOffsetY.current = y;
+  }, [setIsVisible]);
 
   useEffect(() => {
     loadUserData();
@@ -102,12 +141,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthChange, onRoleChange }) => 
       // Simulación de datos (reemplazar con API real)
       setTimeout(() => {
         setDashboardData({
-          saldoTotal: 240399.75,
+          saldoTotal: 2349.25,
           objetivos: {
-            actual: 12500,
-            meta: 20000,
+            actual: 10000,
+            meta: 12000,
             nombre: 'Viaje a Europa',
-            progreso: 62.5,
+            progreso: 85,
           },
           ingresos: {
             total: 3500.00,
@@ -253,6 +292,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthChange, onRoleChange }) => 
 
       <ScrollView
         style={styles.scrollView}
+        onScroll={handleScroll}           // ← NEW
+        scrollEventThrottle={16}          // ← NEW
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -372,7 +413,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthChange, onRoleChange }) => 
             <Text style={[styles.cardTitle, isDarkMode && styles.darkText]}>
               {t("dashboard.Transaction")}
             </Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={navegarATransacciones}>
               <Text style={styles.seeAllText}>{t("dashboard.ViewTransaction")}</Text>
             </TouchableOpacity>
           </View>

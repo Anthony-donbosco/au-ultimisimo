@@ -79,16 +79,7 @@ const Login: React.FC<LoginProps> = ({
 
       if (result.success && result.user) {
         console.log('✅ Login exitoso');
-        Alert.alert(
-          t('common.success') || 'Éxito',
-          result.message || t('auth.login.success') || 'Sesión iniciada correctamente',
-          [
-            {
-              text: t('common.continue') || 'Continuar',
-              onPress: () => onLoginSuccess(result.user)
-            }
-          ]
-        );
+        onLoginSuccess(result.user);
       } else {
         console.log('❌ Login fallido:', result.message);
         Alert.alert(

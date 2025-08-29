@@ -107,6 +107,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, onLogin })
             </Text>
 
             <Login 
+              onLoginSuccess={(usuario) => {onLogin(usuario);}}
               onSubmit={manejarLogin}
               loading={cargando}
               isDarkMode={isDarkMode}

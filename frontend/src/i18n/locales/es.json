@@ -45,7 +45,10 @@
       "noAccount": "¿No tienes una cuenta?",
       "createAccount": "Crear una cuenta",
       "invalidCredentials": "Credenciales inválidas. Por favor, intenta de nuevo.",
-      "authError": "Error de autenticación"
+      "authError": "Error de autenticación",
+      "emailOrUsername": "E-mail",
+      "emailOrUsernamePlaceholder": "ejemplo@gmail.com",
+      "authenticating": "Espera un momento"
     },
     "register": {
       "title": "Crear cuenta",

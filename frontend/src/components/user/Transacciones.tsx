@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from "react-i18next";
 import {
   View,
@@ -11,6 +11,8 @@ import {
   TextInput,
   Modal,
   Alert,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +21,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { globalStyles } from '../../styles/globalStyles';
 import { colors } from '../../styles/colors';
 import { formatCurrency, formatDate } from '../../utils/networkUtils';
+import { useTabBarVisibility } from '../../navigation/useTabBarVisibility';
 
 interface Transaccion {
   id: number;
@@ -59,6 +62,11 @@ const Transacciones: React.FC<TransaccionesProps> = ({ onAuthChange }) => {
     loadTransacciones();
   }, []);
 
+  const { setIsVisible } = useTabBarVisibility();
+
+  const lastOffsetY = useRef(0);
+  const lastAction = useRef<"show" | "hide">("show");
+
   const loadTransacciones = async () => {
     try {
       setLoading(true);
@@ -84,6 +92,35 @@ const Transacciones: React.FC<TransaccionesProps> = ({ onAuthChange }) => {
     await loadTransacciones();
     setRefreshing(false);
   };
+
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+
+    // Mostrar siempre si estás casi arriba
+    if (y < 16 && lastAction.current !== "show") {
+      setIsVisible(true);
+      lastAction.current = "show";
+      lastOffsetY.current = y;
+      return;
+    }
+
+    const delta = y - lastOffsetY.current;
+    const THRESHOLD = 12; // umbral anti-parpadeo
+
+    if (Math.abs(delta) < THRESHOLD) return;
+
+    if (delta > 0 && lastAction.current !== "hide") {
+      // Scrolling down → ocultar
+      setIsVisible(false);
+      lastAction.current = "hide";
+    } else if (delta < 0 && lastAction.current !== "show") {
+      // Scrolling up → mostrar
+      setIsVisible(true);
+      lastAction.current = "show";
+    }
+
+    lastOffsetY.current = y;
+  }, [setIsVisible]);
 
   const handleAddTransaccion = () => {
     if (!nuevaTransaccion.nombre || !nuevaTransaccion.categoria || !nuevaTransaccion.monto) {
@@ -242,6 +279,8 @@ const Transacciones: React.FC<TransaccionesProps> = ({ onAuthChange }) => {
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll} 
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

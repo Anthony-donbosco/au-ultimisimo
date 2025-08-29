@@ -14,6 +14,7 @@ from utils.auth import create_response
 
 # Importar blueprints
 from routes.auth import auth_bp
+from routes.profile import profile_bp  # Cambiado de router a blueprint
 
 # Configurar logging
 logging.basicConfig(
@@ -109,6 +110,7 @@ def create_app(config_name=None):
     
     # Registrar blueprints
     app.register_blueprint(auth_bp)
+    app.register_blueprint(profile_bp)  # Registrar blueprint de perfil
     logger.info("✅ Blueprints registrados correctamente")
     
     # Ruta de prueba y salud
@@ -133,6 +135,12 @@ def create_app(config_name=None):
                         'validate-token': '/api/auth/validate-token',
                         'check-username': '/api/auth/check-username',
                         'check-email': '/api/auth/check-email'
+                    },
+                    'profile': {
+                        'get_profile': '/api/users/profile',
+                        'update_profile': '/api/users/profile',
+                        'upload_picture': '/api/users/profile/picture',
+                        'delete_picture': '/api/users/profile/picture'
                     }
                 }
             }
@@ -181,7 +189,7 @@ def create_app(config_name=None):
             "📱 API de Aureum v1.0.0 - Compatible con Expo Go",
             {
                 'version': '1.0.0',
-                'description': 'API para registro y autenticación de usuarios',
+                'description': 'API para registro, autenticación y gestión de perfiles de usuarios',
                 'expo_compatible': True,
                 'local_ip': local_ip,
                 'endpoints': [
@@ -192,7 +200,11 @@ def create_app(config_name=None):
                     'POST /api/auth/logout - Cerrar sesión (requiere token)',
                     'POST /api/auth/validate-token - Validar token',
                     'POST /api/auth/check-username - Verificar username',
-                    'POST /api/auth/check-email - Verificar email'
+                    'POST /api/auth/check-email - Verificar email',
+                    'GET /api/users/profile - Obtener perfil completo',
+                    'PUT /api/users/profile - Actualizar perfil',
+                    'POST /api/users/profile/picture - Subir foto de perfil',
+                    'DELETE /api/users/profile/picture - Eliminar foto de perfil'
                 ],
                 'authentication': 'JWT Bearer Token',
                 'content_type': 'application/json'
@@ -356,7 +368,7 @@ if __name__ == '__main__':
     
     # Verificar configuración crítica
     if not os.getenv('SECRET_KEY') or not os.getenv('DB_PASSWORD'):
-        logger.warning("⚠️  Variables de entorno críticas no configuradas!")
+        logger.warning("⚠️ Variables de entorno críticas no configuradas!")
         logger.warning("Asegúrate de configurar SECRET_KEY y DB_PASSWORD en el archivo .env")
     
     # Obtener configuración del servidor
@@ -368,7 +380,7 @@ if __name__ == '__main__':
     logger.info("="*60)
     logger.info("🚀 INICIANDO SERVIDOR AUREUM - EXPO GO MODE")
     logger.info("="*60)
-    logger.info(f"📍 Host: {host}:{port}")
+    logger.info(f"🏠 Host: {host}:{port}")
     logger.info(f"📱 IP Local: {local_ip}:{port}")
     logger.info(f"🔧 Debug: {debug}")
     logger.info(f"🌐 CORS: Habilitado para Expo Go")
@@ -388,6 +400,10 @@ if __name__ == '__main__':
     logger.info("   POST /api/auth/validate-token - Validar token")
     logger.info("   POST /api/auth/check-username - Verificar username")
     logger.info("   POST /api/auth/check-email   - Verificar email")
+    logger.info("   GET  /api/users/profile      - Obtener perfil completo")
+    logger.info("   PUT  /api/users/profile      - Actualizar perfil")
+    logger.info("   POST /api/users/profile/picture - Subir foto de perfil")
+    logger.info("   DELETE /api/users/profile/picture - Eliminar foto")
     if debug:
         logger.info("   GET  /debug/config           - Ver configuración")
         logger.info("   GET  /debug/expo-test        - Test de Expo Go")

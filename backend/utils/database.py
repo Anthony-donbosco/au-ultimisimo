@@ -142,13 +142,31 @@ def find_user_by_id(user_id):
     query = "SELECT * FROM users WHERE id = %s"
     return db_manager.execute_query(query, (user_id,), fetch='one')
 
-def create_user(user_data):
-    """Crear nuevo usuario"""
-    query = """
-    INSERT INTO users (username, email, password_hash, first_name, last_name, is_verified)
-    VALUES (%(username)s, %(email)s, %(password_hash)s, %(first_name)s, %(last_name)s, %(is_verified)s)
-    """
-    return db_manager.execute_query(query, user_data)
+# En utils/database.py, busca la función create_user y actualízala:
+
+def create_user(user_data: dict) -> bool:
+    """Crear nuevo usuario en la base de datos"""
+    try:
+        query = """
+        INSERT INTO users (username, email, password_hash, first_name, last_name, is_verified)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        
+        params = (
+            user_data['username'],
+            user_data['email'],
+            user_data['password_hash'],
+            user_data.get('first_name'),
+            user_data.get('last_name'),
+            user_data.get('is_verified', False)
+        )
+        
+        db_manager.execute_query(query, params)
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error creando usuario: {e}")
+        return False
 
 def update_user_last_login(user_id):
     """Actualizar última fecha de login"""

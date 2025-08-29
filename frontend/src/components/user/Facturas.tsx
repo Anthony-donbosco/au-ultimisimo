@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from "react-i18next";
 import {
   View,
@@ -12,6 +12,8 @@ import {
   Modal,
   Alert,
   Image,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +22,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { globalStyles } from '../../styles/globalStyles';
 import { colors } from '../../styles/colors';
 import { formatCurrency, formatDate } from '../../utils/networkUtils';
+import { useTabBarVisibility } from '../../navigation/useTabBarVisibility';
 
 interface Factura {
   id: number;
@@ -58,6 +61,39 @@ const Facturas: React.FC<FacturasProps> = ({ onAuthChange }) => {
   useEffect(() => {
     loadFacturas();
   }, []);
+  const { setIsVisible } = useTabBarVisibility();
+  const lastOffsetY = useRef(0);
+  const lastAction = useRef<"show" | "hide">("show");
+
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = e.nativeEvent.contentOffset.y;
+  
+      // Mostrar siempre si estás casi arriba
+      if (y < 16 && lastAction.current !== "show") {
+        setIsVisible(true);
+        lastAction.current = "show";
+        lastOffsetY.current = y;
+        return;
+      }
+  
+      const delta = y - lastOffsetY.current;
+      const THRESHOLD = 12; // umbral anti-parpadeo
+  
+      if (Math.abs(delta) < THRESHOLD) return;
+  
+      if (delta > 0 && lastAction.current !== "hide") {
+        // Scrolling down → ocultar
+        setIsVisible(false);
+        lastAction.current = "hide";
+      } else if (delta < 0 && lastAction.current !== "show") {
+        // Scrolling up → mostrar
+        setIsVisible(true);
+        lastAction.current = "show";
+      }
+  
+      lastOffsetY.current = y;
+    }, [setIsVisible]);
+    
 
   // ===== Formateo y Validación de Fecha (igual que v2) =====
   const formatearFecha = (texto: string) => {
@@ -76,28 +112,67 @@ const Facturas: React.FC<FacturasProps> = ({ onAuthChange }) => {
     return formateado;
   };
 
-  const validarFecha = (fechaStr: string) => {
-    if (fechaStr.length !== 10) return false;
+  const validarFecha = (fechaStr: string, strict: boolean = true) => {
+    if (strict && fechaStr.length !== 10) return false;
+    if (!strict && fechaStr.length < 10) return true;
+    
     const [año, mes, dia] = fechaStr.split('-').map(Number);
 
-    if (año < 2025 || año > 2500) return false;
+    // Obtener fecha actual
+    const fechaActual = new Date();
+    const añoActual = fechaActual.getFullYear();
+
+    // Validar año (desde año actual hasta 50 años en el futuro)
+    if (año < añoActual || año > añoActual + 50) return false;
+    
+    // Validar mes
     if (mes < 1 || mes > 12) return false;
+    
+    // Validar día básico
     if (dia < 1 || dia > 31) return false;
 
-    const diasPorMes = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let maxDias = diasPorMes[mes - 1];
-
-    // Febrero bisiesto
-    if (mes === 2 && ((año % 4 === 0 && año % 100 !== 0) || año % 400 === 0)) {
-      maxDias = 29;
+    // Crear fecha y validar que sea válida
+    const fechaInput = new Date(año, mes - 1, dia);
+    
+    // Verificar que la fecha construida coincida con los valores ingresados
+    if (fechaInput.getFullYear() !== año || 
+        fechaInput.getMonth() !== mes - 1 || 
+        fechaInput.getDate() !== dia) {
+      return false;
     }
-    return dia <= maxDias;
+
+    // Validar que no sea anterior a hoy (opcional, quítalo si quieres permitir fechas pasadas)
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0); // Resetear horas para comparar solo fechas
+    
+    return fechaInput >= hoy;
   };
 
-  const handleFechaVencimientoChange = (texto: string) => {
-    const fechaFormateada = formatearFecha(texto);
-    setNuevaFactura(prev => ({ ...prev, fechaVencimiento: fechaFormateada }));
+
+  const handleFechaVencimientoChange = (text: string) => {
+    // Solo permitir números y guiones
+    const cleanText = text.replace(/[^0-9-]/g, '');
+    
+    // Formatear automáticamente mientras escribe
+    let formattedText = cleanText;
+    
+    // Auto-agregar guiones en las posiciones correctas
+    if (cleanText.length >= 4 && cleanText.charAt(4) !== '-') {
+      formattedText = cleanText.slice(0, 4) + '-' + cleanText.slice(4);
+    }
+    if (cleanText.length >= 7 && cleanText.charAt(7) !== '-') {
+      formattedText = cleanText.slice(0, 7) + '-' + cleanText.slice(7);
+    }
+    
+    // Limitar longitud
+    if (formattedText.length <= 10) {
+      setNuevaFactura(prev => ({
+        ...prev,
+        fechaVencimiento: formattedText
+      }));
+    }
   };
+
   // =========================================================
 
   const loadFacturas = async () => {
@@ -256,6 +331,10 @@ const Facturas: React.FC<FacturasProps> = ({ onAuthChange }) => {
   const facturasPendientes = facturas.filter(f => f.estado === 'Pendiente').length;
   const facturasVencidas = facturas.filter(f => f.estado === 'Vencida').length;
 
+  const shouldShowDateError = (fechaStr: string) => {
+    return fechaStr.length === 10 && !validarFecha(fechaStr, true);
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, isDarkMode && styles.darkContainer]}>
@@ -321,7 +400,7 @@ const Facturas: React.FC<FacturasProps> = ({ onAuthChange }) => {
           />
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} onScroll={handleScroll} scrollEventThrottle={16}>
           <View style={styles.filterTabs}>
             {['all', 'pending', 'paid', 'overdue'].map((estado) => (
               <TouchableOpacity
@@ -356,6 +435,8 @@ const Facturas: React.FC<FacturasProps> = ({ onAuthChange }) => {
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll} 
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -593,9 +674,7 @@ const Facturas: React.FC<FacturasProps> = ({ onAuthChange }) => {
                 style={[
                   styles.input,
                   isDarkMode && styles.darkInput,
-                  nuevaFactura.fechaVencimiento.length === 10 &&
-                    !validarFecha(nuevaFactura.fechaVencimiento) &&
-                    styles.inputError
+                  shouldShowDateError(nuevaFactura.fechaVencimiento) && styles.inputError
                 ]}
                 placeholder="2025-12-31"
                 placeholderTextColor={isDarkMode ? colors.dark.textTertiary : colors.light.textTertiary}
@@ -607,7 +686,7 @@ const Facturas: React.FC<FacturasProps> = ({ onAuthChange }) => {
               <Text style={[styles.helpText, isDarkMode && styles.darkTextSecondary]}>
                 {t("bills.dateFormat")}
               </Text>
-              {nuevaFactura.fechaVencimiento.length === 10 && !validarFecha(nuevaFactura.fechaVencimiento) && (
+              {shouldShowDateError(nuevaFactura.fechaVencimiento) && (
                 <Text style={styles.errorText}>
                   {t("bills.invalidDate")}
                 </Text>

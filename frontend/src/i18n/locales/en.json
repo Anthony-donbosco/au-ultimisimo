@@ -43,7 +43,10 @@
       "noAccount": "Don't have an account?",
       "createAccount": "Create an account",
       "invalidCredentials": "Invalid credentials. Please try again.",
-      "authError": "Authentication Error"
+      "authError": "Authentication Error",
+      "emailOrUsername": "E-mail",
+      "emailOrUsernamePlaceholder": "example@gmail.com",
+      "authenticating": "Wait a moment"
     },
     "register": {
       "title": "Create account",

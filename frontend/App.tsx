@@ -1,3 +1,4 @@
+// App.tsx
 import React, { useEffect, useState } from 'react';
 import './src/i18n/i18n';
 import { StatusBar } from 'expo-status-bar';
@@ -11,11 +12,11 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { useDarkMode } from './src/hooks/useDarkMode';
 import { globalStyles } from './src/styles/globalStyles';
 import { checkNetworkConnection } from './src/utils/networkUtils';
-import { AuthProvider } from './src/context/AuthContext'; // ← CORREGIR: contexts (con 's')
+import { AuthProvider } from './src/context/AuthContext';
+import { TabBarVisibilityProvider } from './src/navigation/useTabBarVisibility'; // ← NEW
 
 const queryClient = new QueryClient();
 
-// Componente principal de la aplicación
 function AppContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -28,7 +29,6 @@ function AppContent() {
 
   const checkAuthStatus = async () => {
     try {
-      // Verificar conexión a internet
       const hasConnection = await checkNetworkConnection();
       if (!hasConnection) {
         setIsLoading(false);
@@ -36,12 +36,12 @@ function AppContent() {
       }
 
       const token = await AsyncStorage.getItem('token');
-      const usuario = await AsyncStorage.getItem('usuario');
+      const usuario = await AsyncStorage.getItem('user');
 
       if (token && usuario) {
         const userData = JSON.parse(usuario);
         setIsAuthenticated(true);
-        setUserRole(userData.tipo_usuario || 4); // Default usuario normal
+        setUserRole(userData.tipo_usuario || userData.role_id || 4);
       }
     } catch (error) {
       console.log('Error checking auth status:', error);
@@ -62,22 +62,23 @@ function AppContent() {
     <SafeAreaProvider>
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
-          <NavigationContainer>
-            <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-            <AppNavigator
-              isAuthenticated={isAuthenticated}
-              userRole={userRole}
-              onAuthChange={setIsAuthenticated}
-              onRoleChange={setUserRole}
-            />
-          </NavigationContainer>
+          <TabBarVisibilityProvider>{/* ← NEW */}
+            <NavigationContainer>
+              <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+              <AppNavigator
+                isAuthenticated={isAuthenticated}
+                userRole={userRole}
+                onAuthChange={setIsAuthenticated}
+                onRoleChange={setUserRole}
+              />
+            </NavigationContainer>
+          </TabBarVisibilityProvider>
         </QueryClientProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );
 }
 
-// Componente App principal que envuelve todo con el AuthProvider
 export default function App() {
   return (
     <AuthProvider>

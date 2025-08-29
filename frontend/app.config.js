@@ -27,7 +27,7 @@ export default {
       favicon: "./assets/favicon.png"
     },
     extra: {
-      apiUrl: process.env.API_URL || "http://localhost:5000/api"
+      apiUrl: process.env.API_URL || "http://192.168.244.147:5000/api" // aca cambian siempre su ip
     },
     plugins: [
       [

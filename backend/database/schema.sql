@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
     id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
     token VARCHAR(255) NOT NULL UNIQUE,
-    expires_at TIMESTAMP NOT NULL,
+    expires_at DATETIME NOT NULL,
     used BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
     token VARCHAR(255) NOT NULL UNIQUE,
-    expires_at TIMESTAMP NOT NULL,
+    expires_at DATETIME NOT NULL,
     used BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS revoked_tokens (
     jti VARCHAR(255) NOT NULL UNIQUE COMMENT 'JWT ID',
     user_id INT NOT NULL,
     revoked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL,
+    expires_at DATETIME NOT NULL,
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_jti (jti),
@@ -75,7 +75,6 @@ CREATE TABLE IF NOT EXISTS revoked_tokens (
 ) ENGINE=InnoDB;
 
 -- Insertar algunos usuarios de prueba (contraseñas: "password123")
--- La contraseña ya está hasheada con bcrypt
 INSERT INTO users (username, email, password_hash, first_name, last_name, is_verified) VALUES 
 (
     'admin', 

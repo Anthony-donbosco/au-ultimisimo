@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from "react-i18next";
 import {
   View,
@@ -12,6 +12,8 @@ import {
   Modal,
   Alert,
   Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +22,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { globalStyles } from '../../styles/globalStyles';
 import { colors } from '../../styles/colors';
 import { formatCurrency, formatDate } from '../../utils/networkUtils';
+import { useTabBarVisibility } from '../../navigation/useTabBarVisibility';
 
 interface Objetivo {
   id: number;
@@ -103,6 +106,11 @@ const Objetivos: React.FC<ObjetivosProps> = ({ onAuthChange }) => {
     loadObjetivos();
   }, []);
 
+  const { setIsVisible } = useTabBarVisibility();
+
+  const lastOffsetY = useRef(0);
+  const lastAction = useRef<"show" | "hide">("show");
+
   const formatearFecha = (texto: string) => {
   // Remover todos los caracteres que no sean números
   const soloNumeros = texto.replace(/\D/g, '');
@@ -125,26 +133,40 @@ const Objetivos: React.FC<ObjetivosProps> = ({ onAuthChange }) => {
   };
 
   // Función para validar fecha
-  const validarFecha = (fechaStr: string) => {
-    if (fechaStr.length !== 10) return false;
+  const validarFecha = (fechaStr: string, strict: boolean = true) => {
+    if (strict && fechaStr.length !== 10) return false;
+    if (!strict && fechaStr.length < 10) return true;
     
     const [año, mes, dia] = fechaStr.split('-').map(Number);
+
+    // Obtener fecha actual
+    const fechaActual = new Date();
+    const añoActual = fechaActual.getFullYear();
+
+    // Validar año (desde año actual hasta 50 años en el futuro)
+    if (año < añoActual || año > añoActual + 50) return false;
     
-    // Validaciones básicas
-    if (año < 2025 || año > 2500) return false;
+    // Validar mes
     if (mes < 1 || mes > 12) return false;
+    
+    // Validar día básico
     if (dia < 1 || dia > 31) return false;
+
+    // Crear fecha y validar que sea válida
+    const fechaInput = new Date(año, mes - 1, dia);
     
-    // Validar días por mes (básico)
-    const diasPorMes = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    const maxDias = diasPorMes[mes - 1];
-    
-    // Considerar año bisiesto para febrero
-    if (mes === 2 && ((año % 4 === 0 && año % 100 !== 0) || año % 400 === 0)) {
-      return dia <= 29;
+    // Verificar que la fecha construida coincida con los valores ingresados
+    if (fechaInput.getFullYear() !== año || 
+        fechaInput.getMonth() !== mes - 1 || 
+        fechaInput.getDate() !== dia) {
+      return false;
     }
+
+    // Validar que no sea anterior a hoy (opcional, quítalo si quieres permitir fechas pasadas)
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0); // Resetear horas para comparar solo fechas
     
-    return dia <= maxDias;
+    return fechaInput >= hoy;
   };
 
   // Handler para el cambio de fecha
@@ -152,6 +174,34 @@ const Objetivos: React.FC<ObjetivosProps> = ({ onAuthChange }) => {
     const fechaFormateada = formatearFecha(texto);
     setNuevoObjetivo(prev => ({ ...prev, fechaLimite: fechaFormateada }));
   };
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = e.nativeEvent.contentOffset.y;
+  
+      // Mostrar siempre si estás casi arriba
+      if (y < 16 && lastAction.current !== "show") {
+        setIsVisible(true);
+        lastAction.current = "show";
+        lastOffsetY.current = y;
+        return;
+      }
+  
+      const delta = y - lastOffsetY.current;
+      const THRESHOLD = 12; // umbral anti-parpadeo
+  
+      if (Math.abs(delta) < THRESHOLD) return;
+  
+      if (delta > 0 && lastAction.current !== "hide") {
+        // Scrolling down → ocultar
+        setIsVisible(false);
+        lastAction.current = "hide";
+      } else if (delta < 0 && lastAction.current !== "show") {
+        // Scrolling up → mostrar
+        setIsVisible(true);
+        lastAction.current = "show";
+      }
+  
+      lastOffsetY.current = y;
+    }, [setIsVisible]);
 
   const loadObjetivos = async () => {
     try {
@@ -368,6 +418,8 @@ const Objetivos: React.FC<ObjetivosProps> = ({ onAuthChange }) => {
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll} 
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

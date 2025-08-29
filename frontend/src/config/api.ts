@@ -1,10 +1,10 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// CAMBIAR ESTAS IPs por la IP de tu computadora en la red local
+// USAR LA IP REAL DE TU PC (según ipconfig)
 const DEV_API_URL = Platform.select({
-  ios: 'http://192.168.1.100:5000', // ← CAMBIAR por tu IP local
-  android: 'http://192.168.1.100:5000', // ← CAMBIAR por tu IP local  
+  ios: 'http://192.168.244.147:5000', // ← Tu IP real del Ethernet
+  android: 'http://192.168.244.147:5000', // ← Tu IP real del Ethernet
   default: 'http://localhost:5000'
 });
 

@@ -29,6 +29,7 @@ export type UserTabParamList = {
 
 export type UserStackParamList = {
   MainTabs: undefined;
+  Transacciones: undefined;  // Agregar aquí
   Configuracion: undefined;
   Perfil: undefined;
 };
@@ -151,6 +152,14 @@ const UserNavigator: React.FC<UserNavigatorProps> = (props) => {
       </Stack.Screen>
       
       {/* Pantallas adicionales CON navbar visible */}
+      <Stack.Screen name="Transacciones">
+        {(stackProps) => (
+          <StackScreenWrapper navigation={stackProps.navigation}>
+            <Transacciones {...stackProps} onAuthChange={props.onAuthChange} />
+          </StackScreenWrapper>
+        )}
+      </Stack.Screen>
+      
       <Stack.Screen name="Configuracion">
         {(stackProps) => (
           <StackScreenWrapper navigation={stackProps.navigation}>

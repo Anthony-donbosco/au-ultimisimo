@@ -1,5 +1,5 @@
 // src/components/user/Configuracion.tsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,18 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../contexts/ThemeContext';
-import { RouteProp, useNavigation } from '@react-navigation/native';
+import { RouteProp, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { UserTabParamList } from '@/navigation/UserNavigator';
+import { useTabBarVisibility } from '../../navigation/useTabBarVisibility';
+
 
 // Import funciones de idioma
 import {
@@ -46,6 +50,15 @@ interface LanguageOption {
   flag: string;
 }
 
+// ===== MOCK TEMPORAL =====
+// Quita esto cuando conectes backend real
+const MOCK_USER: Usuario = {
+  id: '1',
+  nombre: 'Aureum User',
+  email: 'user@aureum.com',
+};
+// =========================
+
 export const Configuracion: React.FC<ConfiguracionProps> = ({ route, navigation, onAuthChange }) => {
   const { t, i18n } = useTranslation();
   const { isDarkMode, toggleTheme } = useTheme();
@@ -59,11 +72,50 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({ route, navigation,
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [currentLanguageMode, setCurrentLanguageMode] = useState<LanguageMode>('auto');
   const [languageLoading, setLanguageLoading] = useState(false);
+  const { setIsVisible } = useTabBarVisibility();
+
+  const lastOffsetY = useRef(0);
+    const lastAction = useRef<"show" | "hide">("show");
+    const [refreshing, setRefreshing] = useState(false);
+    const onRefresh = async () => {
+      setRefreshing(true);
+      await cargarDatosUsuario();
+      setRefreshing(false);
+    };
 
   // Actualiza el título del header al cambiar idioma
   useEffect(() => {
     navigation?.setOptions?.({ title: t('settings.title') });
   }, [navigation, t, i18n.language]);
+
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+
+    // Mostrar solo si está en el tope absoluto
+    if (y <= 2 && lastAction.current !== "show") {
+      setIsVisible(true);
+      lastAction.current = "show";
+      lastOffsetY.current = y;
+      return;
+    }
+
+    const delta = y - lastOffsetY.current;
+    const THRESHOLD = 1; // umbral mínimo para detectar cualquier movimiento
+
+    if (Math.abs(delta) < THRESHOLD) return;
+
+    if (delta > 0 && lastAction.current !== "hide") {
+      // Cualquier scroll hacia abajo → ocultar inmediatamente
+      setIsVisible(false);
+      lastAction.current = "hide";
+    } else if (delta < 0 && lastAction.current !== "show") {
+      // Scroll hacia arriba → mostrar
+      setIsVisible(true);
+      lastAction.current = "show";
+    }
+
+    lastOffsetY.current = y;
+  }, [setIsVisible]);
 
   // Opciones de idioma (se recalculan al cambiar idioma)
   const languageOptions: LanguageOption[] = useMemo(
@@ -91,10 +143,16 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({ route, navigation,
   );
 
   useEffect(() => {
-    cargarDatosUsuario();
     cargarConfiguraciones();
     loadCurrentLanguage();
   }, []);
+
+  // Rehidratación cada vez que la pantalla gana foco
+  useFocusEffect(
+    useCallback(() => {
+      cargarDatosUsuario();
+    }, [])
+  );
 
   const loadCurrentLanguage = async () => {
     try {
@@ -105,14 +163,45 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({ route, navigation,
     }
   };
 
-  const cargarDatosUsuario = async () => {
+  // --------- Utilidades seguras para AsyncStorage ---------
+  const safeParse = (v: string | null) => {
     try {
-      const usuarioGuardado = await AsyncStorage.getItem('usuario');
-      if (usuarioGuardado) {
-        setDatosUsuario(JSON.parse(usuarioGuardado));
+      if (!v || v === 'null' || v === 'undefined') return null;
+      const obj = JSON.parse(v);
+      if (obj && typeof obj === 'object') return obj;
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const normalizarUsuario = (u: any): Usuario | null => {
+    if (!u) return null;
+    const id = String(u.id ?? u.usuario_id ?? u.userId ?? '').trim();
+    const nombre = String(u.nombre ?? u.nombreCompleto ?? u.name ?? '').trim();
+    const email = String(u.email ?? u.correo ?? u.mail ?? '').trim();
+    if (!id || !nombre || !email) return null;
+    return { id, nombre, email };
+  };
+  // -------------------------------------------------------
+
+  const cargarDatosUsuario = async () => {
+    setCargando(true);
+    try {
+      const raw = await AsyncStorage.getItem('usuario');
+      const parsed = safeParse(raw);
+      let normalizado = normalizarUsuario(parsed);
+
+      // Si no hay usuario (mock temporal), persistimos y usamos MOCK_USER
+      if (!normalizado) {
+        await AsyncStorage.setItem('usuario', JSON.stringify(MOCK_USER));
+        normalizado = MOCK_USER;
       }
+
+      setDatosUsuario(normalizado);
     } catch (error) {
       console.error('Error cargando datos de usuario:', error);
+      setDatosUsuario(null);
     } finally {
       setCargando(false);
     }
@@ -285,9 +374,9 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({ route, navigation,
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Información del Usuario - Ahora clickeable */}
+        {/* Información del Usuario - Ahora clickeable y resiliente */}
         {datosUsuario && (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.userSection, themeStyles.card, styles.userSectionClickable]}
             onPress={navegarAPerfil}
             activeOpacity={0.7}
@@ -295,22 +384,22 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({ route, navigation,
             <View style={styles.userInfo}>
               <View style={styles.avatarContainer}>
                 <Text style={styles.avatarText}>
-                  {datosUsuario.nombre.substring(0, 2).toUpperCase()}
+                  {(datosUsuario.nombre?.slice(0, 2) || 'AU').toUpperCase()}
                 </Text>
               </View>
               <View style={styles.userDetails}>
                 <Text style={[styles.userName, themeStyles.text]}>
-                  {datosUsuario.nombre}
+                  {datosUsuario.nombre || 'Usuario'}
                 </Text>
                 <Text style={[styles.userEmail, themeStyles.secondaryText]}>
-                  {datosUsuario.email}
+                  {datosUsuario.email || '—'}
                 </Text>
               </View>
               <View style={styles.userChevron}>
-                <Ionicons 
-                  name="chevron-forward" 
-                  size={20} 
-                  color={isDarkMode ? '#94a3b8' : '#64748b'} 
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={isDarkMode ? '#94a3b8' : '#64748b'}
                 />
               </View>
             </View>
@@ -477,7 +566,6 @@ export const Configuracion: React.FC<ConfiguracionProps> = ({ route, navigation,
   );
 };
 
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -509,9 +597,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 24,
   },
-  userSectionClickable: {
-    // Efecto visual sutil para indicar que es clickeable
-  },
+  userSectionClickable: {},
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',

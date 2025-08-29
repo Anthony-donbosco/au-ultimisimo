@@ -23,6 +23,8 @@ class User:
             self.password_hash = user_data.get('password_hash')
             self.first_name = user_data.get('first_name')
             self.last_name = user_data.get('last_name')
+            self.phone_number = user_data.get('phone_number')  # Nuevo campo
+            self.profile_picture = user_data.get('profile_picture')  # Nuevo campo
             self.is_active = user_data.get('is_active', True)
             self.is_verified = user_data.get('is_verified', False)
             self.created_at = user_data.get('created_at')
@@ -36,6 +38,8 @@ class User:
             self.password_hash = None
             self.first_name = None
             self.last_name = None
+            self.phone_number = None  # Nuevo campo
+            self.profile_picture = None  # Nuevo campo
             self.is_active = True
             self.is_verified = False
             self.created_at = None
@@ -50,6 +54,8 @@ class User:
             'email': self.email,
             'first_name': self.first_name,
             'last_name': self.last_name,
+            'phone_number': self.phone_number,  # Nuevo campo
+            'profile_picture': self.profile_picture,  # Nuevo campo
             'is_active': self.is_active,
             'is_verified': self.is_verified,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -116,6 +122,47 @@ class User:
             logger.error(f"Error verificando email: {e}")
             return False
     
+    def update_profile(self, **kwargs) -> bool:
+        """Actualizar campos del perfil del usuario"""
+        try:
+            if not self.id:
+                return False
+            
+            # Campos permitidos para actualizar
+            allowed_fields = ['username', 'first_name', 'last_name', 'phone_number', 'profile_picture']
+            
+            # Construir query dinámicamente
+            update_fields = []
+            params = []
+            
+            for field, value in kwargs.items():
+                if field in allowed_fields and hasattr(self, field):
+                    update_fields.append(f"{field} = %s")
+                    params.append(value)
+                    setattr(self, field, value)  # Actualizar el objeto también
+            
+            if not update_fields:
+                return False
+            
+            # Agregar updated_at
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            params.append(self.id)
+            
+            query = f"""
+                UPDATE users SET {', '.join(update_fields)}
+                WHERE id = %s
+            """
+            
+            db_manager.execute_query(query, params)
+            self.updated_at = datetime.utcnow()
+            
+            logger.info(f"Perfil actualizado para usuario {self.username}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error actualizando perfil: {e}")
+            return False
+    
     def save(self) -> bool:
         """Guardar usuario en la base de datos"""
         try:
@@ -124,14 +171,17 @@ class User:
                 query = """
                 UPDATE users SET 
                     username = %s, email = %s, first_name = %s, last_name = %s,
-                    is_active = %s, is_verified = %s
+                    phone_number = %s, profile_picture = %s,
+                    is_active = %s, is_verified = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
                 """
                 params = (
                     self.username, self.email, self.first_name, self.last_name,
+                    self.phone_number, self.profile_picture,
                     self.is_active, self.is_verified, self.id
                 )
                 db_manager.execute_query(query, params)
+                self.updated_at = datetime.utcnow()
             else:
                 # Crear nuevo usuario
                 user_data = {
@@ -140,6 +190,8 @@ class User:
                     'password_hash': self.password_hash,
                     'first_name': self.first_name,
                     'last_name': self.last_name,
+                    'phone_number': self.phone_number,  # Nuevo campo
+                    'profile_picture': self.profile_picture,  # Nuevo campo
                     'is_verified': self.is_verified
                 }
                 create_user(user_data)
@@ -188,12 +240,13 @@ class User:
     
     @classmethod
     def create_user(cls, username: str, email: str, password: str, 
-                   first_name: str = None, last_name: str = None) -> tuple[bool, str, Optional['User']]:
+                   first_name: str = None, last_name: str = None,
+                   phone_number: str = None) -> tuple[bool, str, Optional['User']]:
         """Crear nuevo usuario con validaciones completas"""
         
         # Validar datos de entrada
         is_valid, error_msg = cls.validate_user_data(
-            username, email, password, first_name, last_name
+            username, email, password, first_name, last_name, phone_number
         )
         if not is_valid:
             return False, error_msg, None
@@ -212,6 +265,7 @@ class User:
             user.email = email.strip().lower()
             user.first_name = first_name.strip() if first_name else None
             user.last_name = last_name.strip() if last_name else None
+            user.phone_number = phone_number.strip() if phone_number else None
             
             # Establecer contraseña
             if not user.set_password(password):
@@ -260,7 +314,8 @@ class User:
     
     @staticmethod
     def validate_user_data(username: str, email: str, password: str, 
-                          first_name: str = None, last_name: str = None) -> tuple[bool, str]:
+                          first_name: str = None, last_name: str = None,
+                          phone_number: str = None) -> tuple[bool, str]:
         """Validar todos los datos de usuario"""
         
         # Validar username
@@ -289,4 +344,20 @@ class User:
             if not is_valid:
                 return False, error
         
+        # Validar teléfono (opcional)
+        if phone_number:
+            if len(phone_number.strip()) > 0:
+                if len(phone_number) < 8 or len(phone_number) > 20:
+                    return False, "El número de teléfono debe tener entre 8 y 20 caracteres"
+        
         return True, ""
+    
+    def check_username_available(self, new_username: str) -> bool:
+        """Verificar si un username está disponible (excluyendo el usuario actual)"""
+        try:
+            existing_user = self.find_by_username(new_username)
+            # Disponible si no existe o es el mismo usuario
+            return not existing_user or existing_user.id == self.id
+        except Exception as e:
+            logger.error(f"Error verificando disponibilidad de username: {e}")
+            return False

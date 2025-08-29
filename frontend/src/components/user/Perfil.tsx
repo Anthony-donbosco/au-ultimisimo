@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from "react-i18next";
 import {
   View,
@@ -10,7 +10,10 @@ import {
   Alert,
   Image,
   ActionSheetIOS,
+  RefreshControl,
   Platform,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +21,11 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../contexts/ThemeContext';
 import { RouteProp } from '@react-navigation/native';
-import { UserTabParamList } from '@/navigation/UserNavigator'; // Adjust path as needed
+import { colors } from '../../styles/colors';
+import { UserTabParamList } from '@/navigation/UserNavigator';
+import { useTabBarVisibility } from '../../navigation/useTabBarVisibility';
+import { formatCurrency, formatDate } from '../../utils/networkUtils';
+
 
 interface PerfilProps {
   route: RouteProp<UserTabParamList, 'Perfil'>;
@@ -48,15 +55,54 @@ interface CampoFormulario {
 export const Perfil: React.FC<PerfilProps> = ({ route, navigation, onAuthChange }) => {
   const { t } = useTranslation();
   const { isDarkMode } = useTheme();
+  const { setIsVisible } = useTabBarVisibility();
+  const lastOffsetY = useRef(0);
+  const lastAction = useRef<"show" | "hide">("show");
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await cargarDatosUsuario();
+    setRefreshing(false);
+  };
+
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+
+    // Mostrar solo si está en el tope absoluto
+    if (y <= 2 && lastAction.current !== "show") {
+      setIsVisible(true);
+      lastAction.current = "show";
+      lastOffsetY.current = y;
+      return;
+    }
+
+    const delta = y - lastOffsetY.current;
+    const THRESHOLD = 1; // umbral mínimo para detectar cualquier movimiento
+
+    if (Math.abs(delta) < THRESHOLD) return;
+
+    if (delta > 0 && lastAction.current !== "hide") {
+      // Cualquier scroll hacia abajo → ocultar inmediatamente
+      setIsVisible(false);
+      lastAction.current = "hide";
+    } else if (delta < 0 && lastAction.current !== "show") {
+      // Scroll hacia arriba → mostrar
+      setIsVisible(true);
+      lastAction.current = "show";
+    }
+
+    lastOffsetY.current = y;
+  }, [setIsVisible]);
   
   const [datosUsuario, setDatosUsuario] = useState<DatosUsuario>({
     id: '',
-    nombreCompleto: '',
-    email: '',
-    usuario: '',
+    nombreCompleto: 'David Sibrian',
+    email: 'david@gmail.com',
+    usuario: 'davidson',
     numeroTelefono: '',
     fotoPerfilUri: undefined,
   });
+  
 
   const [modoEdicion, setModoEdicion] = useState(false);
   const [cargando, setCargando] = useState(true);
@@ -74,9 +120,9 @@ export const Perfil: React.FC<PerfilProps> = ({ route, navigation, onAuthChange 
         const usuario = JSON.parse(usuarioGuardado);
         setDatosUsuario({
           id: usuario.id || '1',
-          nombreCompleto: usuario.nombre || 'Rex Raptor',
-          email: usuario.email || 'rexraptor@gmail.com',
-          usuario: usuario.usuario || 'rexraptor045',
+          nombreCompleto: usuario.nombre || 'David Sibrian',
+          email: usuario.email || 'david@gmail.com', // <- Aquí carga el email guardado
+          usuario: usuario.usuario || 'davidson',
           numeroTelefono: usuario.telefono || '+503 7777-7777',
           fotoPerfilUri: usuario.fotoPerfilUri,
         });
@@ -89,6 +135,7 @@ export const Perfil: React.FC<PerfilProps> = ({ route, navigation, onAuthChange 
     }
   };
 
+  
   const guardarDatosUsuario = async () => {
     try {
       setGuardando(true);
@@ -201,6 +248,7 @@ export const Perfil: React.FC<PerfilProps> = ({ route, navigation, onAuthChange 
     cargarDatosUsuario();
   };
 
+
   const actualizarCampo = (campo: keyof DatosUsuario, valor: string) => {
     setDatosUsuario(prev => ({
       ...prev,
@@ -232,14 +280,6 @@ export const Perfil: React.FC<PerfilProps> = ({ route, navigation, onAuthChange 
       placeholder: t("profile.usernamePlaceholder"),
       editable: true,
       tipo: 'texto',
-    },
-    {
-      id: 'numeroTelefono', // (corregido para que edite el campo correcto)
-      label: t("profile.phoneNumber"),
-      valor: datosUsuario.numeroTelefono,
-      placeholder: t("profile.phonePlaceholder"),
-      editable: true,
-      tipo: 'telefono',
     },
   ];
 
@@ -305,7 +345,20 @@ export const Perfil: React.FC<PerfilProps> = ({ route, navigation, onAuthChange 
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+              style={styles.scrollView}
+              onScroll={handleScroll}           // ← NEW
+              scrollEventThrottle={16}          // ← NEW
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  colors={[colors.primary]}
+                  tintColor={colors.primary}
+                />
+              }
+            >
         <View style={[styles.card, themeStyles.card]}>
           {/* Sección de Foto de Perfil */}
           <View style={styles.fotoSection}>
@@ -348,6 +401,7 @@ export const Perfil: React.FC<PerfilProps> = ({ route, navigation, onAuthChange 
           <View style={styles.formSection}>
             {camposFormulario.map(renderCampo)}
           </View>
+          
 
           {/* Botones de Acción */}
           {modoEdicion && (
@@ -415,7 +469,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   actionButton: {
-    backgroundColor: '#f59e0b',
+    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
@@ -424,7 +478,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   actionButtonText: {
-    color: '#ffffff',
+    color: '#fff',
     fontWeight: '600',
     fontSize: 14,
   },
@@ -526,7 +580,7 @@ const styles = StyleSheet.create({
   cancelButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#64748b',
+    borderColor: colors.light.textSecondary,
   },
   saveButton: {
     backgroundColor: '#f59e0b',
@@ -558,17 +612,17 @@ const styles = StyleSheet.create({
 
 const lightStyles = StyleSheet.create({
   container: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.light.background,
   },
   header: {
-    backgroundColor: '#ffffff',
-    borderBottomColor: '#e2e8f0',
+    backgroundColor: colors.light.surface,
+    borderBottomColor: colors.light.border,
   },
   headerTitle: {
-    color: '#1e293b',
+    color: colors.light.text,
   },
   card: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.light.surface,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -576,48 +630,48 @@ const lightStyles = StyleSheet.create({
     shadowRadius: 4,
   },
   text: {
-    color: '#1e293b',
+    color: colors.light.text,
   },
   secondaryText: {
-    color: '#64748b',
+    color: colors.light.textSecondary,
   },
   label: {
-    color: '#374151',
+    color: colors.light.textSecondary,
   },
   input: {
-    backgroundColor: '#ffffff',
-    borderColor: '#d1d5db',
-    color: '#1e293b',
+    backgroundColor: colors.light.surface,
+    borderColor: colors.light.border,
+    color: colors.light.text,
   },
   valorContainer: {
-    backgroundColor: '#f9fafb',
-    borderColor: '#e5e7eb',
+    backgroundColor: colors.light.surfaceSecondary,
+    borderColor: colors.light.border,
   },
   valor: {
-    color: '#1e293b',
+    color: colors.light.text,
   },
   avatarPlaceholder: {
-    backgroundColor: '#f8fafc',
-    borderColor: '#d1d5db',
+    backgroundColor: colors.light.background,
+    borderColor: colors.light.border,
   },
   infoCard: {
-    backgroundColor: '#eff6ff',
+    backgroundColor: colors.infoLight,
   },
 });
 
 const darkStyles = StyleSheet.create({
   container: {
-    backgroundColor: '#0f172a',
+    backgroundColor: colors.dark.background,
   },
   header: {
-    backgroundColor: '#1e293b',
-    borderBottomColor: '#334155',
+    backgroundColor: colors.dark.surface,
+    borderBottomColor: colors.dark.border,
   },
   headerTitle: {
-    color: '#f1f5f9',
+    color: colors.dark.text,
   },
   card: {
-    backgroundColor: 'rgba(30, 41, 59, 0.7)',
+    backgroundColor: colors.dark.surface,
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -625,31 +679,31 @@ const darkStyles = StyleSheet.create({
     shadowRadius: 8,
   },
   text: {
-    color: '#f1f5f9',
+    color: colors.dark.text,
   },
   secondaryText: {
-    color: '#94a3b8',
+    color: colors.dark.textSecondary,
   },
   label: {
-    color: '#e2e8f0',
+    color: colors.dark.text,
   },
   input: {
-    backgroundColor: 'rgba(51, 65, 85, 0.5)',
-    borderColor: '#475569',
-    color: '#f1f5f9',
+    backgroundColor: colors.dark.surfaceSecondary,
+    borderColor: colors.dark.border,
+    color: colors.dark.text,
   },
   valorContainer: {
-    backgroundColor: 'rgba(51, 65, 85, 0.3)',
-    borderColor: '#475569',
+    backgroundColor: colors.dark.surfaceSecondary,
+    borderColor: colors.dark.border,
   },
   valor: {
-    color: '#f1f5f9',
+    color: colors.dark.text,
   },
   avatarPlaceholder: {
-    backgroundColor: 'rgba(51, 65, 85, 0.3)',
-    borderColor: '#475569',
+    backgroundColor: colors.dark.surfaceSecondary,
+    borderColor: colors.dark.border,
   },
   infoCard: {
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    backgroundColor: colors.infoLight,
   },
 });

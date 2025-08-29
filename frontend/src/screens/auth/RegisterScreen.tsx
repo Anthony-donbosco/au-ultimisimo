@@ -126,9 +126,9 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation, onRe
             </Text>
 
             <Registro 
-              onSubmit={manejarRegistro}
-              loading={cargando}
+              onRegisterSuccess={onRegister}  // ✅ Usa la prop del RegisterScreen
               isDarkMode={isDarkMode}
+              onSwitchToLogin={navegarALogin}
             />
 
             {/* Divider */}
