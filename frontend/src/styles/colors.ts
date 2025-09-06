@@ -13,6 +13,7 @@ export const colors = {
   warningLight: '#FEF3C7', // amber-100
   info: '#3B82F6', // blue-500
   infoLight: '#DBEAFE', // blue-100
+  infoDark: '#1E3A8A', // blue-800
 
   // Light theme
   light: {

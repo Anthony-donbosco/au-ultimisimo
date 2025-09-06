@@ -103,6 +103,14 @@ class DatabaseManager:
             logger.error(f"Params: {params}")
             raise
     
+    def fetch_one(self, query, params=None):
+        """Método de compatibilidad para fetch_one"""
+        return self.execute_query(query, params, fetch='one')
+    
+    def fetch_all(self, query, params=None):
+        """Método de compatibilidad para fetch_all"""
+        return self.execute_query(query, params, fetch='all')
+    
     def execute_many(self, query, data_list):
         """Ejecutar múltiples consultas de inserción/actualización"""
         try:
@@ -148,16 +156,21 @@ def create_user(user_data: dict) -> bool:
     """Crear nuevo usuario en la base de datos"""
     try:
         query = """
-        INSERT INTO users (username, email, password_hash, first_name, last_name, is_verified)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO users (username, email, password_hash, first_name, last_name, 
+                          phone_number, profile_picture, google_id, firebase_uid, is_verified)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         
         params = (
             user_data['username'],
             user_data['email'],
-            user_data['password_hash'],
+            user_data.get('password_hash'),  # Puede ser None para usuarios de Google
             user_data.get('first_name'),
             user_data.get('last_name'),
+            user_data.get('phone_number'),
+            user_data.get('profile_picture'),
+            user_data.get('google_id'),
+            user_data.get('firebase_uid'),  # Nuevo campo para Firebase UID
             user_data.get('is_verified', False)
         )
         

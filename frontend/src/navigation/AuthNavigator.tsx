@@ -2,10 +2,18 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
+import { EmailVerificationScreen } from '../screens/auth/EmailVerificationScreen';
 
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
+  EmailVerification: {
+    email: string;
+    username?: string;
+    firstName?: string;
+    lastName?: string;
+    password: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -43,6 +51,17 @@ const AuthNavigator: React.FC<AuthNavigatorProps> = ({
           <RegisterScreen 
             {...props} 
             onRegister={(usuario) => {
+              onRoleChange(usuario.tipo_usuario || 4);
+              onAuthChange(true);
+            }}
+          />
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="EmailVerification">
+        {(props) => (
+          <EmailVerificationScreen 
+            {...props} 
+            onVerificationSuccess={(usuario) => {
               onRoleChange(usuario.tipo_usuario || 4);
               onAuthChange(true);
             }}

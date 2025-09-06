@@ -14,20 +14,24 @@ export default {
     assetBundlePatterns: ["**/*"],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.aureum.mobile"
+      bundleIdentifier: "com.anthony.mobile"
     },
     android: {
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#F59E0B"
       },
-      package: "com.aureum.mobile"
+      package: "com.anthony.mobile"
     },
     web: {
       favicon: "./assets/favicon.png"
     },
     extra: {
-      apiUrl: process.env.API_URL || "http://192.168.244.147:5000/api" // aca cambian siempre su ip
+      // Priorizar API_URL del .env, con fallback a la IP hardcodeada (SIN /api)
+      apiUrl: process.env.API_URL || "http://192.168.0.6:5000",// IP de fallback SIN /api
+      eas: {
+        projectId: "01265406-9867-495b-b2d5-faec767b37d8"
+      }
     },
     plugins: [
       [
@@ -38,6 +42,10 @@ export default {
         }
       ],
       "expo-secure-store"
-    ]
+    ],
+    scheme: "com.anthony.mobile",
+    experiments: {
+      tsconfigPaths: true,
+    }
   }
 };

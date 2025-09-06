@@ -14,26 +14,46 @@ function normalizeApiUrl(url: string): string {
 }
 
 /**
- * Resuelve la baseURL en este orden:
- * 1) EXPO_PUBLIC_API_URL (si la defines en tu .env o en app.config)
- * 2) expoConfig.extra.apiUrl (si la pones en app.json/app.config.ts)
- * 3) Fallbacks: 10.0.2.2 (emulador Android) o tu IP LAN (192.168.1.62)
+ * Resuelve la baseURL en este orden de prioridad:
+ * 1) API_URL desde .env
+ * 2) EXPO_PUBLIC_API_URL desde .env
+ * 3) expoConfig.extra.apiUrl desde app.config.js
+ * 4) Fallbacks automáticos por plataforma
  */
 function resolveBaseUrl(): string {
-  const fromEnv = (process.env.EXPO_PUBLIC_API_URL || '').trim();
-  if (fromEnv) return normalizeApiUrl(fromEnv);
-
-  const fromExtra = (Constants?.expoConfig as any)?.extra?.apiUrl as string | undefined;
-  if (fromExtra && fromExtra.trim()) return normalizeApiUrl(fromExtra);
-
-  // Fallbacks inteligentes
-  if (Platform.OS === 'android') {
-    // Emulador Android accede al host por 10.0.2.2
-    return 'http://10.0.2.2:5000/api';
+  console.log('🔍 API Service: Detectando URL del backend...');
+  
+  // 1. Priorizar EXPO_PUBLIC_API_URL (más confiable en Expo)
+  const expoPublicUrl = (process.env.EXPO_PUBLIC_API_URL || '').trim();
+  if (expoPublicUrl) {
+    console.log('🔧 API: Usando EXPO_PUBLIC_API_URL desde .env:', expoPublicUrl);
+    return normalizeApiUrl(expoPublicUrl);
+  }
+  
+  // 2. API_URL desde .env (fallback)
+  const apiUrl = (process.env.API_URL || '').trim();
+  if (apiUrl) {
+    console.log('🔧 API: Usando API_URL desde .env:', apiUrl);
+    return normalizeApiUrl(apiUrl);
   }
 
-  // Dispositivo físico en la misma LAN: usa tu IPv4 actual
-  return 'http://192.168.244.147:5000';
+  // 3. extra.apiUrl desde app.config.js
+  const fromExtra = (Constants?.expoConfig as any)?.extra?.apiUrl as string | undefined;
+  if (fromExtra && fromExtra.trim()) {
+    console.log('🔧 API: Usando apiUrl desde app.config extra:', fromExtra);
+    return normalizeApiUrl(fromExtra);
+  }
+
+  // 4. Fallbacks automáticos
+  const fallbackUrl = Platform.select({
+    android: 'http://192.168.0.6:5000/api', // Tu IP actual (CON /api porque normalizeApiUrl lo manejará)
+    ios: 'http://192.168.0.6:5000/api', // Misma IP (CON /api porque normalizeApiUrl lo manejará) 
+    default: 'http://192.168.0.6:5000/api' // Usar IP local en lugar de localhost
+  });
+  
+  console.log('⚠️ API: Usando URL fallback:', fallbackUrl);
+  console.log('💡 Configura EXPO_PUBLIC_API_URL en tu frontend/.env para evitar este fallback');
+  return fallbackUrl;
 }
 
 const API_BASE_URL = resolveBaseUrl();

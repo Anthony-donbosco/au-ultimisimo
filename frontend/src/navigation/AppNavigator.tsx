@@ -50,9 +50,16 @@ const AppNavigator: React.FC<AppNavigatorProps> = ({
     }
   };
 
+  // Crear componente wrapper para evitar recreación en cada render
+  const MainComponent = React.useMemo(() => {
+    return renderNavigatorByRole;
+  }, [userRole]);
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Main" component={() => renderNavigatorByRole()} />
+      <Stack.Screen name="Main">
+        {() => MainComponent()}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 };

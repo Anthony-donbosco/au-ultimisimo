@@ -146,6 +146,19 @@ def create_app(config_name=None):
             }
         )
     
+    @app.route('/ping')
+    def ping():
+        """Endpoint simple para verificar conectividad"""
+        return create_response(
+            True,
+            "pong",
+            {
+                'timestamp': datetime.utcnow().isoformat(),
+                'local_ip': local_ip,
+                'status': 'ok'
+            }
+        )
+    
     @app.route('/health')
     def health_check():
         """Endpoint para verificar salud de la aplicación"""

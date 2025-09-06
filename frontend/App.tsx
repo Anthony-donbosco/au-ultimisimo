@@ -1,6 +1,7 @@
 // App.tsx
 import React, { useEffect, useState } from 'react';
-import './src/i18n/i18n';
+// Import i18n asynchronously to avoid blocking
+import('./src/i18n/i18n').catch(console.error);
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

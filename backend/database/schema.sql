@@ -14,9 +14,13 @@ CREATE TABLE IF NOT EXISTS users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(50) NOT NULL UNIQUE,
     email VARCHAR(100) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255),
     first_name VARCHAR(50),
     last_name VARCHAR(50),
+    phone_number VARCHAR(20),
+    profile_picture VARCHAR(500),
+    google_id VARCHAR(100),
+    firebase_uid VARCHAR(128) UNIQUE,
     is_active BOOLEAN DEFAULT TRUE,
     is_verified BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -26,23 +30,27 @@ CREATE TABLE IF NOT EXISTS users (
     -- Índices para mejorar el rendimiento
     INDEX idx_username (username),
     INDEX idx_email (email),
+    INDEX idx_google_id (google_id),
     INDEX idx_created_at (created_at),
-    INDEX idx_is_active (is_active)
+    INDEX idx_is_active (is_active),
+    
+    -- Índice único para Google ID (si existe)
+    UNIQUE KEY uk_google_id (google_id)
 ) ENGINE=InnoDB;
 
--- Tabla para tokens de verificación de email (opcional)
+-- Tabla para tokens de verificación de email (modificada para registro)
 CREATE TABLE IF NOT EXISTS email_verification_tokens (
     id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT NOT NULL,
+    user_email VARCHAR(100) NOT NULL,
     token VARCHAR(255) NOT NULL UNIQUE,
     expires_at DATETIME NOT NULL,
     used BOOLEAN DEFAULT FALSE,
+    used_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_token (token),
     INDEX idx_expires_at (expires_at),
-    INDEX idx_user_id (user_id)
+    INDEX idx_user_email (user_email)
 ) ENGINE=InnoDB;
 
 -- Tabla para tokens de reseteo de contraseña (opcional)

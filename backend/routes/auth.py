@@ -1,7 +1,10 @@
 from flask import Blueprint, request, jsonify
 import logging
+from datetime import datetime
 from models.user import User
 from utils.auth import token_required, create_response, decode_jwt_token, get_token_from_request
+from utils.email import send_verification_code
+from utils.verification import VerificationTokenManager
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -11,7 +14,7 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
-    """Endpoint para registrar nuevo usuario"""
+    """Endpoint para iniciar proceso de registro (envía código por email)"""
     try:
         # Obtener datos del request
         data = request.get_json()
@@ -26,7 +29,7 @@ def register():
         
         # Extraer campos requeridos
         username = data.get('username', '').strip()
-        email = data.get('email', '').strip()
+        email = data.get('email', '').strip().lower()
         password = data.get('password', '')
         first_name = data.get('first_name', '').strip() if data.get('first_name') else None
         last_name = data.get('last_name', '').strip() if data.get('last_name') else None
@@ -42,8 +45,143 @@ def register():
                 status_code=400
             )
         
-        # Crear usuario
-        success, message, user = User.create_user(
+        # Validar datos usando las validaciones del modelo User
+        is_valid, error_msg = User.validate_user_data(
+            username, email, password, first_name, last_name
+        )
+        if not is_valid:
+            logger.warning(f"Datos inválidos: {error_msg}")
+            return create_response(False, error_msg, status_code=400)
+        
+        # Verificar que no exista usuario con mismo email o username
+        if User.find_by_email(email):
+            logger.warning(f"Email ya existe: {email}")
+            return create_response(False, "Ya existe un usuario con este email", status_code=400)
+        
+        if User.find_by_username(username):
+            logger.warning(f"Username ya existe: {username}")
+            return create_response(False, "Ya existe un usuario con este nombre de usuario", status_code=400)
+        
+        # RATE LIMITING: Verificar límites de solicitudes
+        recent_requests = VerificationTokenManager.get_recent_token_requests(email, minutes=15)
+        if recent_requests >= 3:
+            logger.warning(f"Rate limit excedido para {email}: {recent_requests} requests en 15 min")
+            return create_response(
+                False,
+                "Demasiadas solicitudes de código. Espera 15 minutos antes de intentar nuevamente.",
+                status_code=429
+            )
+        
+        # COOLDOWN: Verificar tiempo entre solicitudes (60 segundos)
+        last_token_time = VerificationTokenManager.get_last_token_time(email)
+        if last_token_time:
+            time_since_last = datetime.now() - last_token_time
+            if time_since_last.total_seconds() < 60:
+                remaining_seconds = 60 - int(time_since_last.total_seconds())
+                logger.info(f"Cooldown activo para {email}: {remaining_seconds}s restantes")
+                return create_response(
+                    False,
+                    f"Debes esperar {remaining_seconds} segundos antes de solicitar otro código.",
+                    status_code=429
+                )
+        
+        # Enviar código de verificación por email
+        success, message, verification_code = send_verification_code(email, username)
+        
+        if not success:
+            logger.error(f"Error enviando código a {email}: {message}")
+            return create_response(
+                False,
+                "Error enviando código de verificación. Inténtalo más tarde.",
+                status_code=500
+            )
+        
+        # Guardar token en base de datos
+        token_saved = VerificationTokenManager.create_verification_token(email, verification_code)
+        
+        if not token_saved:
+            logger.error(f"Error guardando token para {email}")
+            return create_response(
+                False,
+                "Error interno procesando verificación",
+                status_code=500
+            )
+        
+        logger.info(f"✅ Código de verificación enviado a {email}")
+        
+        # Respuesta exitosa (sin incluir el código por seguridad)
+        response_data = {
+            'email': email,
+            'message': f"Código de verificación enviado a {email}",
+            'next_step': 'verify_email'
+        }
+        
+        return create_response(
+            True,
+            f"Código de verificación enviado a {email}. Revisa tu bandeja de entrada.",
+            response_data,
+            status_code=200
+        )
+    
+    except Exception as e:
+        logger.error(f"💥 Error interno en registro: {e}")
+        return create_response(
+            False,
+            "Error interno del servidor",
+            status_code=500
+        )
+
+@auth_bp.route('/verify-email', methods=['POST'])
+def verify_email():
+    """Endpoint para verificar código y completar registro"""
+    try:
+        # Obtener datos del request
+        data = request.get_json()
+        
+        if not data:
+            logger.warning("Request de verificación sin datos JSON")
+            return create_response(
+                False,
+                "No se proporcionaron datos",
+                status_code=400
+            )
+        
+        # Extraer campos requeridos
+        email = data.get('email', '').strip().lower()
+        verification_code = data.get('code', '').strip()
+        
+        # También necesitamos los datos del usuario para crear la cuenta
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        first_name = data.get('first_name', '').strip() if data.get('first_name') else None
+        last_name = data.get('last_name', '').strip() if data.get('last_name') else None
+        
+        logger.info(f"🔍 Verificando código para email: {email}")
+        
+        # Validar campos requeridos
+        if not email or not verification_code:
+            return create_response(
+                False,
+                "Email y código de verificación son requeridos",
+                status_code=400
+            )
+        
+        if not username or not password:
+            return create_response(
+                False,
+                "Datos de usuario incompletos para completar registro",
+                status_code=400
+            )
+        
+        # Verificar código
+        is_valid, message = VerificationTokenManager.verify_token(email, verification_code)
+        
+        if not is_valid:
+            logger.warning(f"Código inválido para {email}: {message}")
+            return create_response(False, message, status_code=400)
+        
+        # Código válido - crear usuario
+        success, create_message, user = User.create_user(
             username=username,
             email=email,
             password=password,
@@ -52,13 +190,16 @@ def register():
         )
         
         if not success:
-            logger.warning(f"Error creando usuario: {message}")
-            return create_response(False, message, status_code=400)
+            logger.error(f"Error creando usuario después de verificación: {create_message}")
+            return create_response(False, create_message, status_code=500)
+        
+        # Marcar usuario como verificado
+        user.verify_email()
         
         # Generar token JWT
         try:
             token = user.generate_auth_token()
-            logger.info(f"✅ Usuario registrado exitosamente: {username}")
+            logger.info(f"✅ Usuario verificado y registrado exitosamente: {username}")
         except Exception as e:
             logger.error(f"Error generando token para {username}: {e}")
             return create_response(
@@ -76,13 +217,96 @@ def register():
         
         return create_response(
             True,
-            f"Usuario {username} registrado exitosamente",
+            f"¡Bienvenido {user.get_full_name() or user.username}! Tu cuenta ha sido creada exitosamente.",
             response_data,
             status_code=201
         )
     
     except Exception as e:
-        logger.error(f"💥 Error interno en registro: {e}")
+        logger.error(f"💥 Error interno en verificación: {e}")
+        return create_response(
+            False,
+            "Error interno del servidor",
+            status_code=500
+        )
+
+@auth_bp.route('/resend-verification', methods=['POST'])
+def resend_verification():
+    """Endpoint para reenviar código de verificación"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return create_response(
+                False,
+                "No se proporcionaron datos",
+                status_code=400
+            )
+        
+        email = data.get('email', '').strip().lower()
+        username = data.get('username', '').strip()  # Opcional para el email
+        
+        logger.info(f"🔄 Reenvío de código solicitado para: {email}")
+        
+        if not email:
+            return create_response(
+                False,
+                "Email es requerido",
+                status_code=400
+            )
+        
+        # Verificar que no exista usuario con este email
+        if User.find_by_email(email):
+            return create_response(
+                False,
+                "Ya existe una cuenta con este email",
+                status_code=400
+            )
+        
+        # Limpiar tokens expirados antes de verificar
+        VerificationTokenManager.cleanup_expired_tokens_for_email(email)
+        
+        # Verificar si ya tiene un token válido
+        if VerificationTokenManager.has_valid_token(email):
+            return create_response(
+                False,
+                "Ya tienes un código válido. Espera a que expire antes de solicitar uno nuevo.",
+                status_code=429
+            )
+        
+        # Enviar nuevo código
+        success, message, verification_code = send_verification_code(email, username)
+        
+        if not success:
+            logger.error(f"Error reenviando código a {email}: {message}")
+            return create_response(
+                False,
+                "Error enviando código de verificación",
+                status_code=500
+            )
+        
+        # Guardar nuevo token
+        token_saved = VerificationTokenManager.create_verification_token(email, verification_code)
+        
+        if not token_saved:
+            logger.error(f"Error guardando token de reenvío para {email}")
+            return create_response(
+                False,
+                "Error interno procesando reenvío",
+                status_code=500
+            )
+        
+        logger.info(f"✅ Código reenviado a {email}")
+        
+        return create_response(
+            True,
+            f"Código de verificación reenviado a {email}",
+            {'email': email},
+            status_code=200
+        )
+    
+    except Exception as e:
+        logger.error(f"💥 Error en reenvío: {e}")
         return create_response(
             False,
             "Error interno del servidor",
@@ -454,6 +678,195 @@ def check_email():
     
     except Exception as e:
         logger.error(f"💥 Error verificando email: {e}")
+        return create_response(
+            False,
+            "Error interno del servidor",
+            status_code=500
+        )
+
+@auth_bp.route('/google-auth', methods=['POST'])
+def google_auth():
+    """Endpoint para autenticación con Google usando Firebase"""
+    try:
+        # Importar verificación de Firebase
+        from utils.firebase import verify_firebase_token, initialize_firebase
+        
+        # Asegurar que Firebase esté inicializado
+        if not initialize_firebase():
+            logger.error("Error inicializando Firebase")
+            return create_response(
+                False,
+                "Error de configuración del servidor",
+                status_code=500
+            )
+        
+        data = request.get_json()
+        
+        if not data:
+            logger.warning("Request de Google auth sin datos JSON")
+            return create_response(
+                False,
+                "No se proporcionaron datos",
+                status_code=400
+            )
+        
+        # Extraer datos de Google y Firebase
+        google_id = data.get('google_id', '').strip()
+        email = data.get('email', '').strip().lower()
+        name = data.get('name', '').strip()
+        picture = data.get('picture', '')
+        first_name = data.get('first_name', '').strip() if data.get('first_name') else None
+        last_name = data.get('last_name', '').strip() if data.get('last_name') else None
+        firebase_token = data.get('firebase_token', '')  # CAMBIO: firebase_token en lugar de google_token
+        
+        logger.info(f"🔐 Intento de autenticación con Google/Firebase - Email: {email}, Name: {name}")
+        
+        # Validar campos requeridos
+        if not firebase_token:
+            logger.warning("Token de Firebase no proporcionado")
+            return create_response(
+                False,
+                "Token de Firebase es requerido",
+                status_code=400
+            )
+        
+        if not google_id or not email or not name:
+            logger.warning(f"Campos faltantes - Google ID: {bool(google_id)}, Email: {bool(email)}, Name: {bool(name)}")
+            return create_response(
+                False,
+                "Google ID, email y nombre son requeridos",
+                status_code=400
+            )
+        
+        # NUEVO: Verificar token de Firebase
+        firebase_user = verify_firebase_token(firebase_token)
+        if not firebase_user:
+            logger.warning(f"Token Firebase inválido para email: {email}")
+            return create_response(
+                False,
+                "Token de Firebase inválido o expirado",
+                status_code=401
+            )
+        
+        # Validar que el email del token coincida con el enviado
+        if firebase_user['email'] != email:
+            logger.warning(f"Email no coincide - Token: {firebase_user['email']}, Enviado: {email}")
+            return create_response(
+                False,
+                "Email no coincide con el token de Firebase",
+                status_code=400
+            )
+        
+        # Buscar usuario existente por email
+        existing_user = User.find_by_email(email)
+        
+        if existing_user:
+            # Usuario existe - hacer login
+            logger.info(f"👤 Usuario existente encontrado: {existing_user.username}")
+            
+            # Verificar que la cuenta esté activa
+            if not existing_user.is_active:
+                logger.warning(f"Cuenta desactivada: {email}")
+                return create_response(
+                    False,
+                    "Tu cuenta está desactivada. Contacta al administrador.",
+                    status_code=403
+                )
+            
+            # Actualizar información de Google si es necesario
+            if hasattr(existing_user, 'google_id') and existing_user.google_id != google_id:
+                existing_user.google_id = google_id
+                existing_user.save()
+            
+            # Actualizar timestamp de último login
+            existing_user.update_last_login()
+            
+            # Generar token JWT
+            try:
+                token = existing_user.generate_auth_token()
+                logger.info(f"✅ Login con Google exitoso: {existing_user.username}")
+            except Exception as e:
+                logger.error(f"Error generando token para {existing_user.username}: {e}")
+                return create_response(
+                    False,
+                    "Error generando token de acceso",
+                    status_code=500
+                )
+            
+            # Respuesta exitosa para login
+            response_data = {
+                'user': existing_user.to_dict(),
+                'token': token,
+                'token_type': 'Bearer'
+            }
+            
+            return create_response(
+                True,
+                f"¡Bienvenido de nuevo, {existing_user.get_full_name() or existing_user.username}!",
+                response_data,
+                status_code=200
+            )
+        
+        else:
+            # Usuario no existe - crear cuenta nueva
+            logger.info(f"👤 Creando nueva cuenta con Google para: {email}")
+            
+            # Generar username único basado en email o nombre
+            import re
+            base_username = re.sub(r'[^\w]', '_', email.split('@')[0].lower())
+            username = base_username
+            counter = 1
+            
+            while User.find_by_username(username):
+                username = f"{base_username}_{counter}"
+                counter += 1
+            
+            logger.info(f"📝 Username generado: {username}")
+            
+            # Crear usuario nuevo
+            success, create_message, user = User.create_user(
+                username=username,
+                email=email,
+                password=None,  # No password for Google users
+                first_name=first_name or name.split()[0] if name else None,
+                last_name=last_name or ' '.join(name.split()[1:]) if name and len(name.split()) > 1 else None,
+                is_verified=True,  # Google users are pre-verified
+                google_id=google_id,
+                firebase_uid=firebase_user['uid']  # Agregar Firebase UID
+            )
+            
+            if not success:
+                logger.error(f"Error creando usuario con Google: {create_message}")
+                return create_response(False, create_message, status_code=500)
+            
+            # Generar token JWT
+            try:
+                token = user.generate_auth_token()
+                logger.info(f"✅ Registro con Google exitoso: {username}")
+            except Exception as e:
+                logger.error(f"Error generando token para {username}: {e}")
+                return create_response(
+                    False,
+                    "Usuario creado pero error generando token de acceso",
+                    status_code=500
+                )
+            
+            # Respuesta exitosa para registro
+            response_data = {
+                'user': user.to_dict(),
+                'token': token,
+                'token_type': 'Bearer'
+            }
+            
+            return create_response(
+                True,
+                f"¡Bienvenido a Aureum, {user.get_full_name() or user.username}! Tu cuenta ha sido creada exitosamente.",
+                response_data,
+                status_code=201
+            )
+    
+    except Exception as e:
+        logger.error(f"💥 Error interno en Google auth: {e}")
         return create_response(
             False,
             "Error interno del servidor",

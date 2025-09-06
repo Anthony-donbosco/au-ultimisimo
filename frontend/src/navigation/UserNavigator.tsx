@@ -8,14 +8,14 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useResponsive } from "../hooks/useResponsive";
 
 // Componentes de pantallas
-import Dashboard from "../components/user/Dashboard";
-import Transacciones from "../components/user/Transacciones";
-import Ingresos from "../components/user/Ingresos";
-import Gastos from "../components/user/Gastos";
-import Facturas from "../components/user/Facturas";
-import Objetivos from "../components/user/Objetivos";
-import { Configuracion } from "../components/user/Configuracion";
-import { Perfil } from "../components/user/Perfil";
+import Dashboard from "../screens/user/Dashboard";
+import Transacciones from "../screens/user/Transacciones";
+import Ingresos from "../screens/user/Ingresos";
+import Gastos from "../screens/user/Gastos";
+import Facturas from "../screens/user/Facturas";
+import Objetivos from "../screens/user/Objetivos";
+import { Configuracion } from "../screens/user/Configuracion";
+import { Perfil } from "../screens/user/Perfil";
 import FloatingTabBar from "./components/FloatingTabBar";
 
 export type UserTabParamList = {

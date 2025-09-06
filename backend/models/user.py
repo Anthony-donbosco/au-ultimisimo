@@ -25,6 +25,8 @@ class User:
             self.last_name = user_data.get('last_name')
             self.phone_number = user_data.get('phone_number')  # Nuevo campo
             self.profile_picture = user_data.get('profile_picture')  # Nuevo campo
+            self.google_id = user_data.get('google_id')  # Campo para Google ID
+            self.firebase_uid = user_data.get('firebase_uid')  # Nuevo campo para Firebase
             self.is_active = user_data.get('is_active', True)
             self.is_verified = user_data.get('is_verified', False)
             self.created_at = user_data.get('created_at')
@@ -40,6 +42,8 @@ class User:
             self.last_name = None
             self.phone_number = None  # Nuevo campo
             self.profile_picture = None  # Nuevo campo
+            self.google_id = None  # Campo para Google ID
+            self.firebase_uid = None  # Nuevo campo para Firebase
             self.is_active = True
             self.is_verified = False
             self.created_at = None
@@ -56,6 +60,7 @@ class User:
             'last_name': self.last_name,
             'phone_number': self.phone_number,  # Nuevo campo
             'profile_picture': self.profile_picture,  # Nuevo campo
+            'google_id': self.google_id,  # Campo para Google ID
             'is_active': self.is_active,
             'is_verified': self.is_verified,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -171,13 +176,13 @@ class User:
                 query = """
                 UPDATE users SET 
                     username = %s, email = %s, first_name = %s, last_name = %s,
-                    phone_number = %s, profile_picture = %s,
+                    phone_number = %s, profile_picture = %s, google_id = %s, firebase_uid = %s,
                     is_active = %s, is_verified = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
                 """
                 params = (
                     self.username, self.email, self.first_name, self.last_name,
-                    self.phone_number, self.profile_picture,
+                    self.phone_number, self.profile_picture, self.google_id, self.firebase_uid,
                     self.is_active, self.is_verified, self.id
                 )
                 db_manager.execute_query(query, params)
@@ -192,6 +197,8 @@ class User:
                     'last_name': self.last_name,
                     'phone_number': self.phone_number,  # Nuevo campo
                     'profile_picture': self.profile_picture,  # Nuevo campo
+                    'google_id': self.google_id,  # Campo para Google ID
+                    'firebase_uid': self.firebase_uid,  # Nuevo campo para Firebase
                     'is_verified': self.is_verified
                 }
                 create_user(user_data)
@@ -239,24 +246,46 @@ class User:
             return None
     
     @classmethod
-    def create_user(cls, username: str, email: str, password: str, 
+    def find_by_google_id(cls, google_id: str) -> Optional['User']:
+        """Buscar usuario por Google ID"""
+        try:
+            query = "SELECT * FROM users WHERE google_id = %s"
+            params = (google_id,)
+            user_data = db_manager.fetch_one(query, params)
+            return cls(user_data) if user_data else None
+        except Exception as e:
+            logger.error(f"Error buscando usuario por Google ID: {e}")
+            return None
+    
+    @classmethod
+    def create_user(cls, username: str, email: str, password: str = None, 
                    first_name: str = None, last_name: str = None,
-                   phone_number: str = None) -> tuple[bool, str, Optional['User']]:
+                   phone_number: str = None, is_verified: bool = False,
+                   google_id: str = None, firebase_uid: str = None) -> tuple[bool, str, Optional['User']]:
         """Crear nuevo usuario con validaciones completas"""
         
-        # Validar datos de entrada
-        is_valid, error_msg = cls.validate_user_data(
-            username, email, password, first_name, last_name, phone_number
-        )
-        if not is_valid:
-            return False, error_msg, None
-        
+        # Validar datos de entrada (password es opcional para usuarios de Google)
+        if password is not None:  # Usuario normal con contraseña
+            is_valid, error_msg = cls.validate_user_data(
+                username, email, password, first_name, last_name, phone_number
+            )
+            if not is_valid:
+                return False, error_msg, None
+        else:  # Usuario de Google sin contraseña
+            # Validar solo campos básicos
+            if not username or not email:
+                return False, "Username y email son requeridos", None
+                
         # Verificar que no exista usuario con mismo email o username
         if cls.find_by_email(email):
             return False, "Ya existe un usuario con este email", None
         
         if cls.find_by_username(username):
             return False, "Ya existe un usuario con este nombre de usuario", None
+        
+        # Verificar Google ID único si se proporciona
+        if google_id and cls.find_by_google_id(google_id):
+            return False, "Ya existe un usuario con este Google ID", None
         
         # Crear usuario
         try:
@@ -266,10 +295,14 @@ class User:
             user.first_name = first_name.strip() if first_name else None
             user.last_name = last_name.strip() if last_name else None
             user.phone_number = phone_number.strip() if phone_number else None
+            user.google_id = google_id.strip() if google_id else None
+            user.firebase_uid = firebase_uid.strip() if firebase_uid else None
+            user.is_verified = is_verified
             
-            # Establecer contraseña
-            if not user.set_password(password):
-                return False, "Error procesando contraseña", None
+            # Establecer contraseña solo si se proporciona
+            if password:
+                if not user.set_password(password):
+                    return False, "Error procesando contraseña", None
             
             # Guardar en base de datos
             if user.save():

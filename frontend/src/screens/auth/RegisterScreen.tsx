@@ -17,75 +17,70 @@ import { useTheme } from '../../contexts/ThemeContext';
 import Registro from '../../components/auth/Registro';
 import { AuthButton } from '../../components/auth/AuthButton';
 import { DatosRegistro, Usuario, RegisterScreenProps } from '@/types';
+import { googleAuthService } from '../../services/googleAuthService';
 
 const { width, height } = Dimensions.get('window');
 
 export const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation, onRegister }) => {
   const { t } = useTranslation();
-  const { isDarkMode, toggleTheme } = useTheme();
-  const [cargando, setCargando] = useState(false);
-
-  const manejarRegistro = async (datosRegistro: DatosRegistro) => {
-    try {
-      setCargando(true);
-
-      // Validaciones básicas
-      if (datosRegistro.contrasena !== datosRegistro.confirmarContrasena) {
-        Alert.alert(t('common.error'), t('auth.register.passwordsDoNotMatch'));
-        return;
-      }
-
-      if (datosRegistro.contrasena.length < 6) {
-        Alert.alert(t('common.error'), t('auth.register.passwordTooShort'));
-        return;
-      }
-
-      // Aquí iría la llamada real a la API
-      // const respuesta = await servicioAuth.registrar(datosRegistro);
-      
-      // Simulación de registro
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Simular respuesta exitosa
-      const usuarioRegistrado: Usuario = {
-        id: Date.now().toString(),
-        nombre: datosRegistro.nombre,
-        email: datosRegistro.email,
-        tipoUsuario: datosRegistro.tipoUsuario || 'usuario',
-        tipo_usuario: 4 // Default usuario normal
-      };
-      
-      // Guardar en AsyncStorage
-      await AsyncStorage.setItem('token', 'fake-jwt-token');
-      await AsyncStorage.setItem('usuario', JSON.stringify(usuarioRegistrado));
-      
-      Alert.alert(
-        t('auth.register.registrationSuccess'),
-        t('auth.register.accountCreated'),
-        [
-          {
-            text: t('common.continue'),
-            onPress: () => onRegister(usuarioRegistrado)
-          }
-        ]
-      );
-      
-    } catch (error) {
-      Alert.alert(
-        t('auth.register.registrationError'),
-        t('auth.register.accountCreationFailed')
-      );
-    } finally {
-      setCargando(false);
-    }
-  };
+  const { isDarkMode } = useTheme();
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const navegarALogin = () => {
     navigation.navigate('Login');
   };
 
-  const manejarRegistroGoogle = () => {
-    Alert.alert('Google Sign-Up', t('common.functionalityInDevelopment', 'Funcionalidad en desarrollo'));
+  const manejarRegistroGoogle = async () => {
+    try {
+      setGoogleLoading(true);
+      
+      // Check if Google Sign-In is available
+      const isAvailable = await googleAuthService.isAvailable();
+      if (!isAvailable) {
+        Alert.alert(
+          'Google Sign-Up',
+          'Google Sign-In no está disponible. Verifica que Google Play Services esté instalado.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Attempt Google Sign-In for registration
+      const result = await googleAuthService.signInWithGoogle();
+      
+      if (result.success && result.user) {
+        // Convert Google user to app user format
+        const appUser: Usuario = {
+          id: result.user.id,
+          nombre: result.user.name,
+          email: result.user.email,
+          tipoUsuario: 'usuario',
+          tipo_usuario: 4,
+        };
+        
+        // Call onRegister callback
+        onRegister(appUser);
+        
+        Alert.alert(
+          '¡Registro exitoso!',
+          `Hola ${result.user.name}, tu cuenta ha sido creada exitosamente con Google.`,
+          [{ text: 'Continuar' }]
+        );
+      } else {
+        Alert.alert(
+          'Error Google Sign-Up',
+          result.message || 'No se pudo completar el registro con Google'
+        );
+      }
+    } catch (error: any) {
+      console.error('Google register error:', error);
+      Alert.alert(
+        'Error',
+        error.message || 'Error inesperado durante el registro con Google'
+      );
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
   const themeStyles = isDarkMode ? darkStyles : lightStyles;
@@ -129,6 +124,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation, onRe
               onRegisterSuccess={onRegister}  // ✅ Usa la prop del RegisterScreen
               isDarkMode={isDarkMode}
               onSwitchToLogin={navegarALogin}
+              navigation={navigation} // ✅ Pasar navegación para ir a verificación
             />
 
             {/* Divider */}
@@ -142,11 +138,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation, onRe
 
             {/* Google Sign-Up */}
             <AuthButton
-              title={t('auth.login.googleSignIn')}
+              title={googleLoading ? 'Conectando...' : t('auth.login.googleSignIn')}
               onPress={manejarRegistroGoogle}
               variant="google"
               icon="logo-google"
-              disabled={cargando}
+              disabled={googleLoading}
             />
 
             {/* Link a login */}
@@ -158,7 +154,6 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation, onRe
                 title={t('auth.register.signIn')}
                 onPress={navegarALogin}
                 variant="link"
-                disabled={cargando}
               />
             </View>
 

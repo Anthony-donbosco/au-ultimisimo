@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/C:\\Users\\antho\\Downloads\\au-mobile-main\\frontend/**)",
+      "Read(/C:\\Users\\antho\\Downloads\\au-mobile-main\\frontend/**)",
+      "Read(/C:\\Users\\antho\\Downloads\\au-mobile-main\\frontend/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_ENDPOINTS, apiRequest, authenticatedRequest } from '../config/api';
+import { API_BASE_URL, API_ENDPOINTS, apiRequest, authenticatedRequest } from '../config/api';
 
 // Interfaces para tipos de datos
 export interface LoginCredentials {
@@ -23,6 +23,7 @@ export interface User {
   email: string;
   first_name?: string;
   last_name?: string;
+  picture?: string;
   is_active: boolean;
   is_verified: boolean;
   created_at: string;
@@ -44,6 +45,16 @@ export interface ApiResponse<T = any> {
   success: boolean;
   message: string;
   data?: T;
+}
+
+export interface GoogleAuthData {
+  google_id: string;
+  email: string;
+  name: string;
+  picture?: string;
+  first_name?: string;
+  last_name?: string;
+  firebase_token: string;
 }
 
 class AuthService {
@@ -133,14 +144,53 @@ class AuthService {
     }
   }
 
-  // Método de registro
-  async register(userData: RegisterData): Promise<{ success: boolean; message: string; user?: User }> {
+  // Método de registro (solo envía código de verificación)
+  async register(userData: RegisterData): Promise<{ success: boolean; message: string; data?: any }> {
     try {
-      console.log('📝 Iniciando registro...');
+      console.log('📝 Enviando código de verificación...');
 
       const response = await apiRequest(API_ENDPOINTS.AUTH.REGISTER, {
         method: 'POST',
         body: JSON.stringify(userData),
+      });
+
+      if (response.success) {
+        console.log('✅ Código de verificación enviado');
+        return { 
+          success: true, 
+          message: response.message,
+          data: response.data 
+        };
+      } else {
+        return { 
+          success: false, 
+          message: response.message || 'Error enviando código de verificación' 
+        };
+      }
+    } catch (error: any) {
+      console.error('❌ Error enviando código:', error);
+      return { 
+        success: false, 
+        message: error.message || 'Error de conexión' 
+      };
+    }
+  }
+
+  // Método para verificar email y completar registro
+  async verifyEmail(verificationData: {
+    email: string;
+    code: string;
+    username: string;
+    password: string;
+    first_name?: string;
+    last_name?: string;
+  }): Promise<{ success: boolean; message: string; user?: User }> {
+    try {
+      console.log('🔍 Verificando código de email...');
+
+      const response = await apiRequest(API_ENDPOINTS.AUTH.VERIFY_EMAIL, {
+        method: 'POST',
+        body: JSON.stringify(verificationData),
       }) as AuthResponse;
 
       if (response.success && response.data) {
@@ -157,7 +207,7 @@ class AuthService {
           AsyncStorage.setItem('isAuthenticated', 'true')
         ]);
 
-        console.log('✅ Registro exitoso:', user.username);
+        console.log('✅ Registro completado exitosamente:', user.username);
         return { 
           success: true, 
           message: response.message,
@@ -166,14 +216,37 @@ class AuthService {
       } else {
         return { 
           success: false, 
-          message: response.message || 'Error en registro' 
+          message: response.message || 'Error verificando código' 
         };
       }
     } catch (error: any) {
-      console.error('❌ Error en registro:', error);
+      console.error('❌ Error verificando email:', error);
       return { 
         success: false, 
         message: error.message || 'Error de conexión' 
+      };
+    }
+  }
+
+  // Método para reenviar código de verificación
+  async resendVerificationCode(email: string, username?: string): Promise<{ success: boolean; message: string }> {
+    try {
+      console.log('🔄 Reenviando código de verificación...');
+
+      const response = await apiRequest(API_ENDPOINTS.AUTH.RESEND_VERIFICATION, {
+        method: 'POST',
+        body: JSON.stringify({ email, username }),
+      });
+
+      return {
+        success: response.success,
+        message: response.message || (response.success ? 'Código reenviado' : 'Error reenviando código')
+      };
+    } catch (error: any) {
+      console.error('❌ Error reenviando código:', error);
+      return {
+        success: false,
+        message: error.message || 'Error de conexión'
       };
     }
   }
@@ -351,6 +424,145 @@ class AuthService {
     }
   }
 
+  // Método de autenticación con Google
+  async authenticateWithGoogle(googleData: GoogleAuthData): Promise<{ success: boolean; message: string; user?: User; token?: string }> {
+    try {
+      console.log('🔐 Autenticando con Google...');
+
+      const response = await apiRequest(API_ENDPOINTS.AUTH.GOOGLE_AUTH, {
+        method: 'POST',
+        body: JSON.stringify(googleData),
+      }) as AuthResponse;
+
+      if (response.success && response.data) {
+        const { user, token } = response.data;
+        
+        // Guardar en memoria
+        this.currentUser = user;
+        this.token = token;
+
+        // Guardar en AsyncStorage
+        await Promise.all([
+          AsyncStorage.setItem('token', token),
+          AsyncStorage.setItem('user', JSON.stringify(user)),
+          AsyncStorage.setItem('isAuthenticated', 'true'),
+          AsyncStorage.setItem('auth_method', 'google')
+        ]);
+
+        console.log('✅ Autenticación con Google exitosa:', user.username);
+        return { 
+          success: true, 
+          message: response.message,
+          user,
+          token
+        };
+      } else {
+        return { 
+          success: false, 
+          message: response.message || 'Error en autenticación con Google' 
+        };
+      }
+    } catch (error: any) {
+      console.error('❌ Error en autenticación con Google:', error);
+      return { 
+        success: false, 
+        message: error.message || 'Error de conexión' 
+      };
+    }
+  }
+
+  // Método para actualizar perfil del usuario
+  async updateProfile(profileData: {
+    first_name?: string;
+    last_name?: string;
+    username?: string;
+  }): Promise<{ success: boolean; message: string; user?: User }> {
+    try {
+      console.log('📝 Actualizando perfil del usuario...');
+
+      const response = await authenticatedRequest(API_ENDPOINTS.USER.UPDATE_PROFILE, {
+        method: 'PUT',
+        body: JSON.stringify(profileData),
+      });
+
+      if (response.success && response.data?.user) {
+        // Actualizar usuario en memoria y storage
+        this.currentUser = response.data.user;
+        await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
+        
+        console.log('✅ Perfil actualizado exitosamente');
+        return {
+          success: true,
+          message: response.message,
+          user: response.data.user
+        };
+      }
+
+      return {
+        success: false,
+        message: response.message || 'Error actualizando perfil'
+      };
+    } catch (error: any) {
+      console.error('❌ Error actualizando perfil:', error);
+      return {
+        success: false,
+        message: error.message || 'Error de conexión'
+      };
+    }
+  }
+
+  // Método para subir avatar
+  async uploadAvatar(imageUri: string): Promise<{ success: boolean; message: string; imageUrl?: string }> {
+    try {
+      console.log('📸 Subiendo avatar...');
+
+      const formData = new FormData();
+      formData.append('avatar', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'avatar.jpg',
+      } as any);
+
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.USER.UPLOAD_AVATAR}`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Actualizar el usuario actual con la nueva URL de la imagen
+        if (this.currentUser && data.data?.imageUrl) {
+          this.currentUser.picture = data.data.imageUrl;
+          await AsyncStorage.setItem('user', JSON.stringify(this.currentUser));
+        }
+
+        console.log('✅ Avatar subido exitosamente');
+        return {
+          success: true,
+          message: data.message,
+          imageUrl: data.data?.imageUrl
+        };
+      }
+
+      return {
+        success: false,
+        message: data.message || 'Error subiendo avatar'
+      };
+    } catch (error: any) {
+      console.error('❌ Error subiendo avatar:', error);
+      return {
+        success: false,
+        message: error.message || 'Error de conexión'
+      };
+    }
+  }
+
   // Método para limpiar completamente la sesión
   async clearSession(): Promise<void> {
     this.currentUser = null;
@@ -359,7 +571,9 @@ class AuthService {
     await Promise.all([
       AsyncStorage.removeItem('token'),
       AsyncStorage.removeItem('user'),
-      AsyncStorage.removeItem('isAuthenticated')
+      AsyncStorage.removeItem('isAuthenticated'),
+      AsyncStorage.removeItem('auth_method'),
+      AsyncStorage.removeItem('firebase_token')
     ]);
   }
 }

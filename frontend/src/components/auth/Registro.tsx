@@ -17,6 +17,7 @@ interface RegistroProps {
   onRegisterSuccess: (user: any) => void;
   isDarkMode?: boolean;
   onSwitchToLogin?: () => void;
+  navigation?: any; // Para navegar a verificación de email
 }
 
 interface FormErrors {
@@ -31,7 +32,8 @@ interface FormErrors {
 const Registro: React.FC<RegistroProps> = ({ 
   onRegisterSuccess, 
   isDarkMode = false,
-  onSwitchToLogin 
+  onSwitchToLogin,
+  navigation
 }) => {
   const { t } = useTranslation();
   
@@ -196,23 +198,30 @@ const Registro: React.FC<RegistroProps> = ({
 
       const result = await authService.register(registerData);
 
-      if (result.success && result.user) {
-        console.log('✅ Registro exitoso');
-        Alert.alert(
-          t('common.success') || 'Éxito',
-          result.message || 'Cuenta creada correctamente',
-          [
-            {
-              text: t('common.continue') || 'Continuar',
-              onPress: () => onRegisterSuccess(result.user)
-            }
-          ]
-        );
+      if (result.success) {
+        console.log('✅ Código de verificación enviado');
+        
+        // Navegar a pantalla de verificación con los datos
+        if (navigation) {
+          navigation.navigate('EmailVerification', {
+            email: registerData.email,
+            username: registerData.username,
+            firstName: registerData.first_name,
+            lastName: registerData.last_name,
+            password: registerData.password,
+          });
+        } else {
+          // Fallback si no hay navegación
+          Alert.alert(
+            t('common.success') || 'Éxito',
+            result.message || 'Código enviado a tu email. Verifica tu bandeja de entrada.',
+          );
+        }
       } else {
-        console.log('❌ Registro fallido:', result.message);
+        console.log('❌ Error enviando código:', result.message);
         Alert.alert(
           t('common.error') || 'Error',
-          result.message || 'Error al crear la cuenta'
+          result.message || 'Error al enviar código de verificación'
         );
       }
     } catch (error: any) {
@@ -354,7 +363,7 @@ const Registro: React.FC<RegistroProps> = ({
 
         {/* Botón de Registro */}
         <AuthButton
-          title={loading ? 'Creando cuenta...' : 'Crear Cuenta'}
+          title={loading ? 'Enviando código...' : 'Enviar código de verificación'}
           onPress={handleSubmit}
           loading={loading}
           variant="primary"
@@ -382,7 +391,7 @@ const Registro: React.FC<RegistroProps> = ({
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color="#f59e0b" />
             <Text style={[styles.loadingText, themeStyles.secondaryText]}>
-              Creando tu cuenta...
+              Enviando código de verificación...
             </Text>
           </View>
         )}

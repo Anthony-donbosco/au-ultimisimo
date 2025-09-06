@@ -17,6 +17,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import Login from '../../components/auth/Login';
 import { AuthButton } from '../../components/auth/AuthButton';
 import { CredencialesLogin, Usuario, LoginScreenProps } from '@/types';
+import { googleAuthService } from '../../services/googleAuthService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -24,6 +25,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, onLogin })
   const { t } = useTranslation();
   const { isDarkMode, toggleTheme } = useTheme();
   const [cargando, setCargando] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const manejarLogin = async (credenciales: CredencialesLogin) => {
     try {
@@ -64,8 +66,57 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, onLogin })
     navigation.navigate('Register');
   };
 
-  const manejarLoginGoogle = () => {
-    Alert.alert('Google Sign-In', t('common.functionalityInDevelopment', 'Funcionalidad en desarrollo'));
+  const manejarLoginGoogle = async () => {
+    try {
+      setGoogleLoading(true);
+      
+      // Check if Google Sign-In is available
+      const isAvailable = await googleAuthService.isAvailable();
+      if (!isAvailable) {
+        Alert.alert(
+          'Google Sign-In',
+          'Google Sign-In no está disponible. Verifica que Google Play Services esté instalado.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Attempt Google Sign-In
+      const result = await googleAuthService.signInWithGoogle();
+      
+      if (result.success && result.user) {
+        // Convert Google user to app user format
+        const appUser: Usuario = {
+          id: result.user.id,
+          nombre: result.user.name,
+          email: result.user.email,
+          tipoUsuario: 'usuario',
+          tipo_usuario: 4,
+        };
+        
+        // Call onLogin callback
+        onLogin(appUser);
+        
+        Alert.alert(
+          '¡Bienvenido!',
+          `Hola ${result.user.name}, te has conectado exitosamente con Google.`,
+          [{ text: 'Continuar' }]
+        );
+      } else {
+        Alert.alert(
+          'Error Google Sign-In',
+          result.message || 'No se pudo completar el inicio de sesión con Google'
+        );
+      }
+    } catch (error: any) {
+      console.error('Google login error:', error);
+      Alert.alert(
+        'Error',
+        error.message || 'Error inesperado durante el inicio de sesión con Google'
+      );
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
   const themeStyles = isDarkMode ? darkStyles : lightStyles;
@@ -124,11 +175,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, onLogin })
 
             {/* Google Sign-In */}
             <AuthButton
-              title={t('auth.login.googleSignIn')}
+              title={googleLoading ? 'Conectando...' : t('auth.login.googleSignIn')}
               onPress={manejarLoginGoogle}
               variant="google"
               icon="logo-google"
-              disabled={cargando}
+              disabled={cargando || googleLoading}
             />
 
             {/* Link a registro */}
