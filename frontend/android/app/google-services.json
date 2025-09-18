@@ -1,0 +1,106 @@
+{
+  "project_info": {
+    "project_number": "439489101000",
+    "project_id": "aureum-db",
+    "storage_bucket": "aureum-db.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:439489101000:android:ab89535258e731e963f9fd",
+        "android_client_info": {
+          "package_name": "com.anthony.aureumdb"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "439489101000-hca6ceifogs9aei0cedscp9e9264caap.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.anthony.aureumdb",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "439489101000-tgsdgeopgcta7shbadojk072caviascv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.anthony.aureumdb",
+            "certificate_hash": "eeee8e369976e679613c03c8ff8b94944eb210db"
+          }
+        },
+        {
+          "client_id": "439489101000-pcqeneihre89f12uvrs0dphc4jghjcpu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxfJrVPpZkXfT7OOBd_hznnXeFTtaWn0g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "439489101000-i8o3u4vj7mk6u02k7409ipmnj4vhb7f0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "439489101000-e2vk2ututf23spfooj7mgnjm02jsp7l4.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.anthony.aureumdb"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:439489101000:android:c55d739692140f8563f9fd",
+        "android_client_info": {
+          "package_name": "com.aureum.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "439489101000-s7n4cdph3anto8f640hedkkfj36rhp8b.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aureum.mobile",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "439489101000-pcqeneihre89f12uvrs0dphc4jghjcpu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxfJrVPpZkXfT7OOBd_hznnXeFTtaWn0g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "439489101000-i8o3u4vj7mk6u02k7409ipmnj4vhb7f0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "439489101000-e2vk2ututf23spfooj7mgnjm02jsp7l4.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.anthony.aureumdb"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

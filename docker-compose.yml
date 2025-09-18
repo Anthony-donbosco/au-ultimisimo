@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Base de datos MySQL
+  mysql:
+    image: mysql:8.0
+    container_name: au-mobile-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: mi_app_db
+      MYSQL_USER: dbuser
+      MYSQL_PASSWORD: dbpassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/database:/docker-entrypoint-initdb.d
+    networks:
+      - au-mobile-network
+
+  # Backend API
+  backend:
+    build: ./backend
+    container_name: au-mobile-backend
+    environment:
+      - FLASK_ENV=production
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=dbuser
+      - DB_PASSWORD=dbpassword
+      - DB_NAME=mi_app_db
+      - JWT_SECRET_KEY=your-super-secret-jwt-key-here
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mysql
+    volumes:
+      - ./backend:/app
+    networks:
+      - au-mobile-network
+    restart: unless-stopped
+
+  # Frontend Expo (para desarrollo)
+  frontend:
+    image: node:18-alpine
+    container_name: au-mobile-frontend
+    working_dir: /app
+    environment:
+      - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
+      - REACT_NATIVE_PACKAGER_HOSTNAME=0.0.0.0
+    ports:
+      - "19000:19000"  # Expo DevTools
+      - "19001:19001"  # Expo Metro Bundler
+      - "19002:19002"  # Expo Tunnel
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm install && npx expo start --tunnel"
+    networks:
+      - au-mobile-network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+
+networks:
+  au-mobile-network:
+    driver: bridge

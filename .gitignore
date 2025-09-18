@@ -1,0 +1,11 @@
+frontend/backup-pre-migration/
+backend/firebase-service-account.json
+frontend/.env
+backend/.env
+.env
+.env.*
+*.env
+.env.docker
+*.log
+server.log
+.claude/
