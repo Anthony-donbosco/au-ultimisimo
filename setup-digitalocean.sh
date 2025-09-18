@@ -18,7 +18,7 @@ apt install git -y
 
 # Clonar repositorio (reemplaza con tu repo)
 echo "📦 Clonando repositorio..."
-git clone https://github.com/TU-USUARIO/au-mobile-main.git
+git clone https://github.com/Anthony-donbosco/au-mobile-main.git
 cd au-mobile-main
 
 # Configurar variables de entorno
