@@ -29,9 +29,9 @@ const getDevApiUrl = () => {
   
   // 4. Fallback automático basado en plataforma
   const fallbackUrl = Platform.select({
-    ios: 'http://64.23.168.204:5000', // Tu IP actual (SIN /api)
-    android: 'http://64.23.168.204:5000', // Misma IP para dispositivo físico (SIN /api)
-    default: 'http://64.23.168.204:5000' // Usar IP local en lugar de localhost
+    ios: 'http://157.230.172.62:5000', // Tu IP actual (SIN /api)
+    android: 'http://157.230.172.62:5000', // Misma IP para dispositivo físico (SIN /api)
+    default: 'http://157.230.172.62:5000' // Usar IP local en lugar de localhost
   });
   
   console.log('⚠️ Usando URL fallback:', fallbackUrl);
@@ -40,7 +40,7 @@ const getDevApiUrl = () => {
 };
 
 const DEV_API_URL = getDevApiUrl();
-const PROD_API_URL = 'http://64.23.168.204:5000'; // Cambiar por tu IP pública o dominio
+const PROD_API_URL = 'http://157.230.172.62:5000'; // Cambiar por tu IP pública o dominio
 
 export const API_BASE_URL = __DEV__ ? DEV_API_URL : PROD_API_URL;
 
